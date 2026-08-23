@@ -83,18 +83,82 @@ def load_cards(path=DEFAULT_DATA_PATH) -> Tuple[List[Card], Coverage]:
     return cards, coverage
 
 
-def build_game(cards: List[Card], user_count: int = 8, max_round: int = 20) -> Game:
-    """由卡牌列表构建一局对战。"""
-    pool = CardPool(cards)
-    engine = CardEngine(cards)
-    return Game(pool, engine, user_count=user_count, max_round=max_round)
+def build_game(
+    cards: List[Card],
+    user_count: int = 8,
+    max_round: int = 20,
+    expansions=None,
+    random_pick: bool = False,
+) -> Game:
+    """由卡牌列表构建一局对战。
+
+    :param expansions: 本局开启的拓展包名称列表（0~2 个，遵守独占规则）。默认 ``None``
+        表示只启用核心种族与基础内容。非法选择会抛 :class:`ValueError`。
+    :param random_pick: 为 ``True`` 时忽略 ``expansions``，随机挑选一组合法拓展包。
+    """
+    from star_tarven_simulator.expansions import filter_cards
+    from star_tarven_simulator.expansions import random_expansions as _pick
+
+    if random_pick:
+        expansions = _pick()
+
+    pool_cards = filter_cards(cards, expansions)
+    pool = CardPool(pool_cards)
+    engine = CardEngine(pool_cards)
+    game = Game(pool, engine, user_count=user_count, max_round=max_round)
+    game.enabled_expansions = list(expansions) if expansions else []
+    return game
 
 
 def main() -> None:
-    """打印覆盖率报告（``uv run python -m star_tarven_simulator.loader``）。"""
+    """打印覆盖率报告，并可选地演示拓展包过滤。
+
+    用法::
+
+        uv run python -m star_tarven_simulator.loader
+        uv run python -m star_tarven_simulator.loader --expansions 作战计划 比特狂潮
+        uv run python -m star_tarven_simulator.loader --random
+    """
+    import argparse
+
+    from star_tarven_simulator.expansions import (
+        EXPANSION_PACKS,
+        filter_cards,
+        random_expansions,
+        validate_selection,
+    )
+
+    parser = argparse.ArgumentParser(description="星际酒馆模拟器加载器 / 覆盖率报告")
+    parser.add_argument(
+        "--expansions",
+        nargs="*",
+        default=None,
+        metavar="拓展包",
+        help=f"开启的拓展包（至多 2 个）。可选：{', '.join(EXPANSION_PACKS)}",
+    )
+    parser.add_argument(
+        "--random",
+        action="store_true",
+        help="随机挑选一组合法拓展包（忽略 --expansions）",
+    )
+    args = parser.parse_args()
+
     cards, coverage = load_cards()
     print(f"已加载 {len(cards)} 张卡牌")
     print(coverage.summary())
+
+    expansions = None
+    if args.random:
+        expansions = random_expansions()
+    elif args.expansions is not None:
+        expansions = validate_selection(args.expansions)
+
+    if expansions is not None:
+        pool_cards = filter_cards(cards, expansions)
+        label = "、".join(expansions) if expansions else "（仅核心）"
+        print()
+        print(f"启用拓展包: {label}")
+        print(f"过滤后卡池: {len(pool_cards)}/{len(cards)} 张")
 
 
 if __name__ == "__main__":

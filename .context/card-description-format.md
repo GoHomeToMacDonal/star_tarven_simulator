@@ -22,7 +22,8 @@
         "<c val=\"FFFF80\">奖励：</c>获得2晶体矿"
     ],
     "tags": ["terran"],
-    "gold_tags": ["terran"]
+    "gold_tags": ["terran"],
+    "source": ["核心人族"]
 }
 ```
 
@@ -32,6 +33,10 @@
 - `description`: **字符串列表**，每个元素是一条独立能力子句（含 `<c val>` 标记）。
 - `gold_description`: 金色（三连）版本描述，结构同上。
 - `tags` / `gold_tags`: 显式标签列表（普通/金色）。`race` 会在加载时自动补进 tags。
+- `source`: **字符串列表**，卡牌来源标注。用于按拓展包过滤卡池（见 §6）。取值分三类：
+  核心种族（`核心人族/核心神族/核心虫族/核心中立`）、可选拓展包（`作战计划/时不我待/重装上阵/
+  穷兵黩武/一念之差/身经百战/比特狂潮/中世纪集市`）、基础内容（`辅助卡/特殊`，或为空列表）。
+  可同时含多个来源（如 `["核心人族","重装上阵"]`）。
 
 ## 2. `<c val="RRGGBB">关键词</c>` 颜色标记
 
@@ -107,6 +112,7 @@
 | 类型        | `level`/`price`/`count` 均为字符串           | `level`(int)、`price`(float)、int 数量 |
 | id          | `id`                                        | `uuid`                                |
 | 无用尾注    | 混在描述里（寿仙杯冠军、社区说明等噪声）      | 已从结构化描述中清理                   |
+| 来源标注    | 无                                          | 新增 `source` 列表，支持按拓展包过滤卡池 |
 
 对写代码的直接影响：
 1. **不再需要 `parser.py` / `card2program.py` 那套“归一化 + 子串匹配 + md5”流程。**
@@ -114,3 +120,35 @@
 2. **金色版本不再需要跨文件 diff**，`gold_description` 直接映射到 `gold_event_handlers`。
    （注意：旧 `Card.from_json` 从未填充 `gold_event_handlers`，是重写时要补的缺口。）
 3. **units/tags 已是干净结构**，加载时无需类型转换与推导。
+
+## 6. `source` 字段与拓展包过滤
+
+新版每张卡多了 `source` 列表，标注卡牌来源，用于**按拓展包过滤卡池**。逻辑集中在
+`src/star_tarven_simulator/expansions.py`。
+
+来源三分类：
+
+| 类别         | 取值 | 默认是否启用 |
+|-------------|------|-------------|
+| 核心种族     | `核心人族` / `核心神族` / `核心虫族` / `核心中立` | ✅ 常驻（不可关闭） |
+| 基础内容     | `辅助卡`（定点部署）/ `特殊`；以及 `source` 为空 | ✅ 常驻（不可关闭） |
+| 可选拓展包   | `作战计划` / `时不我待` / `重装上阵` / `穷兵黩武` / `一念之差` / `身经百战` / `比特狂潮` / `中世纪集市` | ❌ 默认关闭，按需开启 |
+
+规则：
+- 一局至多开启 `MAX_EXPANSIONS`（=2）个拓展包。
+- **独占拓展包** `时不我待` 与 `中世纪集市` 互斥：选中其一后不能再搭配任何其它拓展包。
+- 过滤判定：`source` 为空 ⇒ 保留；否则 `source` 与「启用来源集合」有交集 ⇒ 保留。
+  故 `["核心人族","重装上阵"]` 这类双来源卡默认（未开 `重装上阵`）也因核心来源而保留。
+
+接口：
+- `validate_selection(expansions)` —— 校验并归一化选择（非法抛 `ValueError`）。
+- `random_expansions(count=None, rng=None)` —— 随机挑选合法组合（遵守独占规则）。
+- `enabled_sources(expansions)` / `filter_cards(cards, expansions)` —— 算启用来源 / 过滤卡牌。
+- `loader.build_game(cards, expansions=None, random_pick=False)` —— 用过滤后卡牌构建对局，
+  并把最终选择记录到 `game.enabled_expansions`。
+
+命令行演示：
+```bash
+uv run python -m star_tarven_simulator.loader --expansions 作战计划 比特狂潮
+uv run python -m star_tarven_simulator.loader --random
+```

@@ -72,6 +72,8 @@ class Card:
     tags: List[str]
     gold_tags: List[str]
     package: Optional[str] = None
+    # 卡牌来源标注（核心种族 / 拓展包 / 辅助卡 / 特殊）；用于按拓展包过滤卡池
+    source: List[str] = field(default_factory=list)
     # 由解析器填充：描述行 -> EventHandler 模板
     event_handlers: List = field(default_factory=list)
     gold_event_handlers: List = field(default_factory=list)
@@ -96,6 +98,7 @@ class Card:
             tags=list(card_json.get("tags", [])),
             gold_tags=list(card_json.get("gold_tags", [])),
             package=package,
+            source=list(card_json.get("source", [])),
         )
 
         # race 自动补进 tags / gold_tags

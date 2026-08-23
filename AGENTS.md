@@ -86,12 +86,15 @@ src/star_tarven_simulator/
 │   ├── overrides.py      # 不规则效果的文本注册表（key=归一化文本，普通/金色分别注册）
 │   ├── mechanics.py      # teleport / hatch / feed 原语
 │   └── __init__.py       # resolve() + is_passive()
-└── loader.py         # load_cards()->(cards,Coverage)、build_game()、python -m ... 打印覆盖率
+├── loader.py         # load_cards()->(cards,Coverage)、build_game(expansions=/random_pick=)、python -m ... 报告
+└── expansions.py     # 拓展包(source)过滤：核心默认启用、拓展包按需开启(1-2个)、随机挑选(独占规则)
 ```
 
 运行：
 - 覆盖率报告：`uv run python -m star_tarven_simulator.loader`
-- 测试：`uv run pytest tests/test_engine.py -q`
+- 拓展包过滤演示：`uv run python -m star_tarven_simulator.loader --expansions 作战计划 比特狂潮`
+- 随机拓展包：`uv run python -m star_tarven_simulator.loader --random`
+- 测试：`uv run pytest tests/test_engine.py tests/test_expansions.py -q`
 
 当前效果解析覆盖率 **100%**（629/629 合并后描述行）。所有描述行均已解析为 handler；其中部分依赖
 "休眠事件"（效果体已实现，触发时机需上层驱动，见下）。
@@ -99,6 +102,23 @@ src/star_tarven_simulator/
 - **回归起源**：`每回合结束时,若场上其他卡牌星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和3瓦斯`
   —— 按约定：把被摧毁卡牌的**总价值换算成等值的「原始异龙」**（价值 250），并 +3 瓦斯。换算基准单位写在
   `overrides._ORIGIN_PRIMAL_UNIT`，如需改成其它原始单位改这里即可。
+
+### 拓展包过滤（source 字段）
+`v260822_card.json` 每张卡带 `source` 列表，标注卡牌来源。`expansions.py` 据此过滤卡池：
+
+- **常驻启用（不可关闭）**：核心种族 `核心人族/核心神族/核心虫族/核心中立`，以及基础内容
+  `辅助卡`（定点部署所需）、`特殊`；`source` 为空的卡牌也视为基础内容常驻启用。
+- **可选拓展包（默认关闭）**：`作战计划/时不我待/重装上阵/穷兵黩武/一念之差/身经百战/比特狂潮/中世纪集市`，
+  一局至多开 `MAX_EXPANSIONS`（=2）个。
+- **独占拓展包**：`时不我待` 与 `中世纪集市` 互斥——选中其一后不能再搭配任何其它拓展包
+  （该局只能开这一个）。随机挑选（`random_expansions`）与手动校验（`validate_selection`）都强制此规则。
+- **过滤规则**：卡牌 `source` 为空则保留；否则当 `source` 与「启用来源集合」有交集时保留。
+  因此既属核心又属拓展的双来源卡（如 `核心人族+重装上阵`）默认也会保留。
+
+接口（`expansions.py`）：`validate_selection` / `random_expansions(count=,rng=)` /
+`enabled_sources` / `filter_cards(cards, expansions)`。`loader.build_game(cards, expansions=None,
+random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终选择记到 `game.enabled_expansions`。
+命中数据：默认卡池 114/155；开任一拓展包后按其卡数扩充（如 `时不我待`/`中世纪集市` 各 +8）。
 
 ### 休眠事件（已实现、需外部驱动，默认不触发）
 部分效果的触发时机在"酒馆经济"里没有对应动作，但效果体已正确实现，接入上层驱动即可生效：
