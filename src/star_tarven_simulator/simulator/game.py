@@ -140,6 +140,10 @@ class Tarven:
     def psi_level_max(self) -> int:
         return max((slot.psi_level for slot in self.slots), default=0)
 
+    def total_power(self) -> float:
+        """当前场上 7 个卡槽的单位总价值（只读，供外部优化目标使用）。"""
+        return sum(slot.price() for slot in self.slots)
+
     def larva(self, units: Dict[str, int]) -> None:
         """注卵：找到现有虫卵或空槽生成虫卵，注入单位并广播 any_card_larva。"""
         empty_idx = None
