@@ -119,16 +119,29 @@ class Card:
 
 
 class CardPool:
-    """卡池：按等级加权随机抽卡，支持标签过滤（用于"发现"）。"""
+    """卡池：按等级加权随机抽卡，支持标签过滤（用于"发现"）。
 
-    def __init__(self, cards: List[Card]):
+    ``no_draw_uuids`` 中的卡牌仍会进入 :attr:`cards` / :attr:`card_map` /
+    :attr:`card_type_map`（可查询、可被引擎使用），但**不会**进入可抽取的
+    :attr:`pool` 等级桶——即"不出现在卡池、但仍可使用"。用于辅助卡 / 特殊卡：
+    它们通过定点部署等途径使用，不应被商店随机抽到。
+    """
+
+    def __init__(
+        self,
+        cards: List[Card],
+        no_draw_uuids: Optional[set] = None,
+    ):
         self.cards = cards
         self.card_map = {card.uuid: card for card in cards}
         self.card_type_map = {card.name: card for card in cards}
+        self.no_draw_uuids = set(no_draw_uuids) if no_draw_uuids else set()
 
-        # pool[level] 是该等级 uuid 的可重复列表
+        # pool[level] 是该等级 uuid 的可重复列表（不含 no_draw_uuids 中的卡）
         self.pool: List[List[int]] = [[] for _ in range(7)]
         for card in cards:
+            if card.uuid in self.no_draw_uuids:
+                continue
             if 1 <= card.level <= 6:
                 self.pool[card.level] += [card.uuid] * CARD_POOL_NUMBER[card.level]
 
@@ -148,6 +161,8 @@ class CardPool:
             cards = [cards]
         for card in cards:
             if isinstance(card, Card) and 1 <= card.level <= 6:
+                if card.uuid in self.no_draw_uuids:
+                    continue
                 self.pool[card.level].append(card.uuid)
 
     def _sample(
