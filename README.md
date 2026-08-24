@@ -19,6 +19,25 @@ uv run python -m star_tarven_simulator.loader
 uv run pytest tests/test_engine.py tests/test_expansions.py -q
 ```
 
+## 进场与槽位规则
+
+玩家场上有 7 个槽位。通过 `BuyAction` 直接购买进场，或通过
+`CacheEnterAction` 从暂存区进场时，普通卡牌只能放入从左到右的首个空槽。
+带有 `能够定点部署` 标签的卡牌可以在场上仍有空槽时指定任意槽位；指定已被占用的槽位
+时，引擎会自动腾挪卡牌。没有空槽时，定点部署卡也不能进场。
+
+```python
+from star_tarven_simulator.simulator.action import BuyAction, CacheEnterAction
+
+# 普通卡：slot_idx 必须是当前最左侧的空槽
+game.action(BuyAction(shop_idx=0, slot_idx=0))
+
+# 暂存区进场：同样遵守普通卡 / 定点部署卡的槽位规则
+game.action(CacheEnterAction(cache_idx=0, slot_idx=3))
+```
+
+也可以通过 `game.available_placement_slots(card)` 查询某张卡当前允许的槽位。
+
 ## 拓展包过滤（source）
 
 `v260822_card.json` 每张卡带 `source` 字段标注来源。默认只启用**核心种族**

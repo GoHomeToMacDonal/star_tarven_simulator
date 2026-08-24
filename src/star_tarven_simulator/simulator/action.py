@@ -17,7 +17,11 @@ class UpgradeTarvenAction(Action):
 
 @dataclass
 class BuyAction(Action):
-    """购买卡牌。``slot_idx`` 为空表示进暂存区，否则直接进场。"""
+    """购买卡牌。
+
+    ``slot_idx`` 为空表示进暂存区。直接进场时，普通卡只能选择首个空槽；带
+    ``能够定点部署`` 标签的卡在场上有空槽时可以选择任意位置。
+    """
 
     shop_idx: int
     slot_idx: Optional[int] = None
@@ -25,7 +29,7 @@ class BuyAction(Action):
 
 @dataclass
 class CacheEnterAction(Action):
-    """把暂存区的卡放到某槽进场。"""
+    """把暂存区的卡放到场上，槽位规则与 :class:`BuyAction` 相同。"""
 
     cache_idx: int
     slot_idx: Optional[int] = None

@@ -453,12 +453,31 @@ class Tarven:
 
         return True
 
+    def available_placement_slots(self, card: Union[Card, str, None]) -> List[int]:
+        """返回卡牌当前可以进场的槽位。
+
+        普通卡只能放入从左往右的首个空槽；带 ``能够定点部署`` 标签的卡只要
+        场上仍有空槽，就可以指定任意位置。后者指定已占用的位置时由
+        :meth:`_make_room` 负责腾位。
+        """
+        if isinstance(card, str):
+            card = self.pool.card_type_map.get(card)
+        if not isinstance(card, Card):
+            return []
+
+        empty_slots = [slot.index for slot in self.slots if slot.card_type is None]
+        if not empty_slots:
+            return []
+        if "能够定点部署" in card.tags:
+            return list(range(len(self.slots)))
+        return [empty_slots[0]]
+
     def _handle_place(self, action) -> bool:
         if isinstance(action, BuyAction):
-            if self.card_price(action.shop_idx) > self.mineral:
+            if not (0 <= action.shop_idx < len(self.shop)):
                 return False
             card = self.shop[action.shop_idx]
-            if card is None:
+            if card is None or self.card_price(action.shop_idx) > self.mineral:
                 return False
             if action.slot_idx is None:
                 if not self.store_card_to_cache(card.name):
@@ -467,25 +486,28 @@ class Tarven:
                 self.shop[action.shop_idx] = None
                 return True
         else:  # CacheEnterAction
-            if action.slot_idx is None:
+            if not (0 <= action.cache_idx < len(self.cache)):
+                return False
+            card = self.cache[action.cache_idx]
+            if isinstance(card, str):
+                card = self.pool.card_type_map.get(card)
+            if card is None:
                 return False
 
         slot_idx = action.slot_idx
+        if slot_idx not in self.available_placement_slots(card):
+            return False
 
-        # 腾位（右移优先，否则左移）
+        # 仅定点部署卡能选中已占用槽；右移优先，右侧无空位时左移。
         if self.slots[slot_idx].card_type is not None:
             if not self._make_room(slot_idx):
                 return False
 
         if isinstance(action, BuyAction):
             self.mineral -= self.card_price(action.shop_idx)
-            card = self.shop[action.shop_idx]
             self.shop[action.shop_idx] = None
         else:
-            card = self.cache[action.cache_idx]
             self.cache[action.cache_idx] = None
-            if isinstance(card, str):
-                card = self.pool.card_type_map.get(card, card)
 
         self.slots[slot_idx] = Slot(slot_idx, self)
         self.card_engine.assign_card_to_slot(card, self.slots[slot_idx])
