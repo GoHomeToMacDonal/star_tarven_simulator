@@ -411,26 +411,31 @@ class Tarven:
             AnyCardEnteredOrSoldEvent(self, trigger_slot),
         ]
 
+        # 出售在触发效果前就释放槽位。这样出售效果中的“注卵”会把虫卵
+        # 放入包括出售槽在内的最左侧空位，而不是落到更右侧的空位。
+        # ``trigger_slot`` 仍保留完整卡牌数据，作为 SellingEvent / sold_slot
+        # 的事件载荷，因此出售相关效果仍可读取被出售卡牌的单位和标签。
+        self.slots[trigger_slot.index] = Slot(trigger_slot.index, self)
+
+        # 出售卡牌自身的效果需要显式触发：它已不在 self.slots 中，不能再
+        # 依赖下面的全场遍历发现。
+        trigger_slot.trigger([SellingEvent(self, trigger_slot)])
+
+        # 虚空水晶塔转移到左侧
+        cnt = trigger_slot.count("虚空水晶塔")
+        left = trigger_slot.left
+        if left is not None and left.card_type is not None and cnt > 0:
+            left.add_unit("虚空水晶塔", cnt)
+            self.trigger_any_card_event(AnyCardGainVoidCrystalTowerEvent(self, left))
+
         for slot in self.slots:
             if slot.card_type is None:
                 continue
-            if slot.index == trigger_slot.index:
-                slot.trigger([SellingEvent(self, trigger_slot)])
-                # 虚空水晶塔转移到左侧
-                cnt = trigger_slot.count("虚空水晶塔")
-                left = trigger_slot.left
-                if left is not None and left.card_type is not None and cnt > 0:
-                    left.add_unit("虚空水晶塔", cnt)
-                    self.trigger_any_card_event(
-                        AnyCardGainVoidCrystalTowerEvent(self, left)
-                    )
-            else:
-                slot.trigger(events)
-                # 相邻卡牌获得黑暗值
-                if self.are_neighbors(slot, trigger_slot):
-                    self.gain_darkness(slot, 1)
+            slot.trigger(events)
+            # 相邻卡牌获得黑暗值
+            if self.are_neighbors(slot, trigger_slot):
+                self.gain_darkness(slot, 1)
 
-        self.slots[trigger_slot.index] = Slot(trigger_slot.index, self)
         self.mineral += 1
 
     # ------------------------------------------------------------------
