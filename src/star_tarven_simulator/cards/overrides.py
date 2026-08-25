@@ -1172,7 +1172,8 @@ reg("每回合结束时,若晶体矿数量≥1,则摧毁所有卡牌的精华,�
 
 def _refill_igniter(cap):
     def h(slot, event):
-        slot.add_unit("原始点火虫", min(cap, 2 * slot.count("精华")))
+        target = min(cap, 2 * slot.count("精华"))
+        slot.add_unit("原始点火虫", max(target - slot.count("原始点火虫"), 0))
     return h
 
 
