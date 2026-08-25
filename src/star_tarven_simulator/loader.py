@@ -89,6 +89,8 @@ def build_game(
     max_round: int = 20,
     expansions=None,
     random_pick: bool = False,
+    heroes=None,
+    rng=None,
 ) -> Game:
     """由卡牌列表构建一局对战。
 
@@ -98,9 +100,11 @@ def build_game(
     """
     from star_tarven_simulator.expansions import BASE_EXTRA_SOURCES, filter_cards
     from star_tarven_simulator.expansions import random_expansions as _pick
+    from star_tarven_simulator.simulator.hero import validate_hero_assignment
 
+    hero_names = validate_hero_assignment(heroes, user_count)
     if random_pick:
-        expansions = _pick()
+        expansions = _pick(rng=rng)
 
     pool_cards = filter_cards(cards, expansions)
     # 辅助卡 / 特殊卡：保留在卡池对象内（可查询、可被引擎使用），但不进入可抽取的等级桶。
@@ -109,9 +113,15 @@ def build_game(
         for c in pool_cards
         if set(getattr(c, "source", []) or []) & set(BASE_EXTRA_SOURCES)
     }
-    pool = CardPool(pool_cards, no_draw_uuids=_no_draw)
+    pool = CardPool(pool_cards, no_draw_uuids=_no_draw, rng=rng)
     engine = CardEngine(pool_cards)
-    game = Game(pool, engine, user_count=user_count, max_round=max_round)
+    game = Game(
+        pool,
+        engine,
+        user_count=user_count,
+        max_round=max_round,
+        heroes=hero_names,
+    )
     game.enabled_expansions = list(expansions) if expansions else []
     return game
 

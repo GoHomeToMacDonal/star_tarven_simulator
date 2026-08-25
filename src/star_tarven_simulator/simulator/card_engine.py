@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from typing import Dict, List, Union
 
-from star_tarven_simulator.constants.unit_type import BIOLOGICAL_UNITS
+from star_tarven_simulator.constants.unit_type import (
+    BIOLOGICAL_UNITS,
+    HERO_UNITS,
+    MECHANICAL_UNITS,
+)
 from star_tarven_simulator.simulator.base import AbstractCardEngine
 from star_tarven_simulator.simulator.card import Card, Tags
 from star_tarven_simulator.simulator.event import AnyCardHatchEvent
@@ -29,12 +33,18 @@ def _larva_action_handler(slot: Slot, event) -> None:
         return
     if left.card_type is None or right.card_type is None:
         return
-    if not left.tags.has("zerg") or not right.tags.has("zerg"):
+    if (
+        (not left.tags.has("zerg") or not right.tags.has("zerg"))
+        and not getattr(event.tarven, "egg_hatches_any_race", False)
+    ):
         return
 
+    allow_mechanical = getattr(event.tarven, "egg_hatches_mechanical", False)
     hatched: Dict[str, int] = {}
     for unit, count in slot.units.items():
-        if unit in BIOLOGICAL_UNITS:
+        if unit not in HERO_UNITS and (
+            unit in BIOLOGICAL_UNITS or (allow_mechanical and unit in MECHANICAL_UNITS)
+        ):
             left.add_unit(unit, count)
             right.add_unit(unit, count)
             hatched[unit] = count
@@ -72,6 +82,8 @@ class CardEngine(AbstractCardEngine):
     def assign_card_to_slot(self, card: Union[Card, str], slot: Slot) -> None:
         if card == "虫卵":
             slot.card_type = "虫卵"
+            slot.source_card = None
+            slot.derived = True
             slot.tags = Tags()
             slot.tags.add("zerg")
             slot.tags.add("金色")
@@ -87,6 +99,8 @@ class CardEngine(AbstractCardEngine):
 
         if slot.card_type is None:
             slot.card_type = card.name
+            slot.source_card = card
+            slot.derived = bool(card.derived)
             slot.level = card.level
             for unit, cnt in card.units.items():
                 slot.add_unit(unit, cnt)
@@ -95,6 +109,16 @@ class CardEngine(AbstractCardEngine):
                 slot.event_handlers.append(handler.copy(slot.state, slot))
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _runtime_handlers(slot: Slot) -> List[EventHandler]:
+        """返回不属于静态定义或英雄临时定义的实例附加 handler。"""
+        descriptions = set(slot.temporary_handler_descriptions)
+        card = slot.source_card
+        if isinstance(card, Card):
+            descriptions.update(h.description for h in card.event_handlers)
+            descriptions.update(h.description for h in card.gold_event_handlers)
+        return [h for h in slot.event_handlers if h.description not in descriptions]
+
     def merge_slots(self, left_slot: Slot, right_slot: Slot) -> None:
         """三连合成：右槽合并进左槽，换成金色 handler，右槽清空。"""
         assert left_slot.card_type == right_slot.card_type
@@ -110,20 +134,183 @@ class CardEngine(AbstractCardEngine):
 
         left_slot.tags.add("金色")
 
-        card = self.card_map[left_slot.card_type]
+        card = left_slot.source_card or self.card_map.get(left_slot.card_type)
+        if not isinstance(card, Card):
+            # 动态卡只做数值合并；没有静态金色描述可切换。
+            left_slot.state.slots[right_slot.index] = Slot(right_slot.index, left_slot.state)
+            right_slot.card_type = None
+            return
 
-        # 移除普通描述对应的 handler，替换为金色 handler。
-        # 注意：card.description 是含颜色标记的原始文本，而 handler.description 是归一化文本，
-        # 因此按"卡牌普通 handler 的归一化描述集合"来判定，而不是直接对比 card.description。
-        normal_descriptions = {h.description for h in card.event_handlers}
-        left_slot.event_handlers = [
-            h
-            for h in left_slot.event_handlers + right_slot.event_handlers
-            if h.description not in normal_descriptions
+        # 三连恢复静态来源的金色描述，同时保留部署/升级等实例附加 handler。
+        runtime_handlers = [
+            h.copy(left_slot.state, left_slot)
+            for h in self._runtime_handlers(left_slot) + self._runtime_handlers(right_slot)
         ]
-        for handler in card.gold_event_handlers:
-            left_slot.event_handlers.append(handler.copy(left_slot.state, left_slot))
+        left_slot.temporary_description = []
+        left_slot.temporary_handler_descriptions = set()
+        left_slot.event_handlers = runtime_handlers + [
+            h.copy(left_slot.state, left_slot) for h in card.gold_event_handlers
+        ]
 
         # 清空右槽
         left_slot.state.slots[right_slot.index] = Slot(right_slot.index, left_slot.state)
         right_slot.card_type = None
+
+
+
+    # ------------------------------------------------------------------
+    # 英雄所需的实例级卡牌操作；不修改共享 Card 模板。
+    # ------------------------------------------------------------------
+    def make_gold(self, slot: Slot) -> None:
+        """将单个实例转为金色，并切换到其静态来源的金色 handler。"""
+        slot.tags.add("金色")
+        card = slot.source_card
+        if not isinstance(card, Card):
+            return
+        runtime_handlers = self._runtime_handlers(slot)
+        slot.event_handlers = runtime_handlers + [
+            h.copy(slot.state, slot) for h in card.gold_event_handlers
+        ]
+        slot.temporary_description = []
+        slot.temporary_handler_descriptions = set()
+
+    def reload_static_definition(self, slot: Slot, *, gold: bool | None = None) -> None:
+        """恢复实例的静态描述；用于雷神临时描述在三连后还原。"""
+        card = slot.source_card
+        if not isinstance(card, Card):
+            return
+        use_gold = bool(slot.tags.has("金色")) if gold is None else gold
+        templates = card.gold_event_handlers if use_gold else card.event_handlers
+        runtime_handlers = self._runtime_handlers(slot)
+        slot.event_handlers = runtime_handlers + [h.copy(slot.state, slot) for h in templates]
+        slot.temporary_description = []
+        slot.temporary_handler_descriptions = set()
+
+    def apply_temporary_definition(self, slot: Slot, definition: Card) -> None:
+        runtime_handlers = self._runtime_handlers(slot)
+        slot.temporary_description = list(definition.description)
+        slot.temporary_handler_descriptions = {
+            h.description for h in definition.event_handlers
+        }
+        slot.event_handlers = runtime_handlers + [
+            h.copy(slot.state, slot) for h in definition.event_handlers
+        ]
+
+    def copy_slot(self, source: Slot, target: Slot, *, derived: bool = False) -> None:
+        """复制在场实例，不共享 Tags/units/handler 绑定。"""
+        target.card_type = source.card_type
+        target.source_card = source.source_card
+        target.derived = derived or source.derived
+        target.level = source.level
+        target.tags = Tags(list(source.tags))
+        if derived:
+            target.tags.add("衍生卡")
+        for unit, count in source.units.items():
+            target.add_unit(unit, count)
+        target.upgrades = list(source.upgrades)
+        target.temporary_description = list(source.temporary_description)
+        target.temporary_handler_descriptions = set(source.temporary_handler_descriptions)
+        target.event_handlers = [h.copy(target.state, target) for h in source.event_handlers]
+
+    def transform_slot(self, slot: Slot, card: Card) -> None:
+        """在原位置重载为固定/动态定义，保留槽位对象以维持外部引用。"""
+        slot.card_type = None
+        slot.source_card = None
+        slot.level = -1
+        slot.tags = Tags()
+        slot.units = {}
+        slot.unit_count = 0
+        slot.upgrades = []
+        slot.event_handlers = []
+        slot.temporary_description = []
+        slot.temporary_handler_descriptions = set()
+        slot.derived = bool(card.derived)
+        self.assign_card_to_slot(card, slot)
+
+    def fuse_card_definition(self, slot: Slot, definition: Card) -> None:
+        """把一张静态/动态定义完整融合进现有槽，不产生进场或出售事件。"""
+        original_name = slot.card_type
+        for unit, count in definition.units.items():
+            slot.add_unit(unit, count)
+        for tag in definition.tags:
+            slot.tags.add(tag)
+        for race in ("terran", "zerg", "neutral"):
+            slot.tags.remove(race)
+        slot.tags.add("protoss")
+        slot.event_handlers.extend(
+            handler.copy(slot.state, slot) for handler in definition.event_handlers
+        )
+        slot.card_type = f"{original_name}+{definition.name}"
+        slot.source_card = None
+        slot.derived = True
+        slot.tags.add("衍生卡")
+        slot.tags.add("无法融合")
+        slot.tags.add("无法三连")
+        slot.tags.add("金色")
+
+    def reload_dynamic_definition(self, slot: Slot, definition: Card) -> None:
+        """完整装载动态定义，同时保留实例已有单位、升级和 handlers。"""
+        existing_handlers = list(slot.event_handlers)
+        for unit, count in definition.units.items():
+            slot.add_unit(unit, count)
+        for tag in definition.tags:
+            slot.tags.add(tag)
+        slot.card_type = definition.name
+        slot.source_card = definition
+        slot.derived = True
+        slot.level = definition.level
+        slot.event_handlers = existing_handlers + [
+            handler.copy(slot.state, slot) for handler in definition.event_handlers
+        ]
+        slot.temporary_description = []
+        slot.temporary_handler_descriptions = set()
+
+    def replace_definition_preserving_payload(self, slot: Slot, definition: Card) -> None:
+        """Replace card identity/handlers while retaining current units and upgrades."""
+        use_gold = bool(slot.tags.has("金色"))
+        slot.card_type = definition.name
+        slot.source_card = definition
+        slot.derived = False
+        slot.level = definition.level
+        slot.upgrades_limit = max(5, len(slot.upgrades))
+        slot.tags = Tags(definition.gold_tags if use_gold else definition.tags)
+        slot.tags.add("属于原始虫群")
+        if use_gold:
+            slot.tags.add("金色")
+        templates = definition.gold_event_handlers if use_gold else definition.event_handlers
+        slot.event_handlers = [handler.copy(slot.state, slot) for handler in templates]
+        slot.temporary_description = []
+        slot.temporary_handler_descriptions = set()
+
+    def fuse_slots(self, left: Slot, right: Slot) -> None:
+        """Fuse Archon targets into a dynamic result retained in the right slot."""
+        left_name, right_name = left.card_type, right.card_type
+        left_races = {race for race in ("terran", "protoss", "zerg") if left.tags.has(race)}
+        right_races = {race for race in ("terran", "protoss", "zerg") if right.tags.has(race)}
+        combined_non_neutral = left_races | right_races
+        result_race = next(iter(combined_non_neutral)) if len(combined_non_neutral) == 1 else "neutral"
+
+        for unit, count in left.units.items():
+            right.add_unit(unit, count)
+        merged_upgrades = list(left.upgrades) + list(right.upgrades)
+        right.upgrades_limit = 5
+        right.upgrades = merged_upgrades[:5]
+        right.level = max(left.level, right.level)
+        for tag in left.tags:
+            right.tags.add(tag)
+        for race in ("terran", "protoss", "zerg", "neutral"):
+            right.tags.remove(race)
+        right.tags.add(result_race)
+        right.event_handlers = [
+            *(handler.copy(right.state, right) for handler in left.event_handlers),
+            *right.event_handlers,
+        ]
+        right.card_type = f"{left_name}+{right_name}"
+        right.source_card = None
+        right.derived = True
+        right.tags.add("衍生卡")
+        right.tags.add("无法融合")
+        right.tags.add("无法三连")
+        right.tags.add("金色")
+        left.state.slots[left.index] = Slot(left.index, left.state)
+        left.card_type = None

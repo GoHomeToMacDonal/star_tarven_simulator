@@ -161,3 +161,13 @@ UNIT_PRICES["劫掠者"] = 125.0
 UNIT_PRICES["维京战机"] = 225.0
 
 UNIT_PRICES["旋风狂热者"] = 150.0
+
+
+# Fixed-hero contract names for Mengsk's royal conversions.
+UNIT_PRICES["皇家战列巡航舰"] = UNIT_PRICES["战列巡航舰(皇家卫队)"]
+UNIT_PRICES["皇家雷神"] = UNIT_PRICES["雷神(皇家卫队)"]
+UNIT_PRICES["皇家攻城坦克"] = UNIT_PRICES["攻城坦克"]
+UNIT_PRICES["皇家维京战机"] = UNIT_PRICES["维京战机"]
+UNIT_PRICES["皇家幽灵"] = UNIT_PRICES["幽灵"]
+UNIT_PRICES["女妖"] = UNIT_PRICES["被感染的女妖"]
+UNIT_PRICES["暴龙兽"] = UNIT_PRICES["原始暴龙兽"]

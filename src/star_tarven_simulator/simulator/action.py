@@ -1,5 +1,6 @@
 """玩家动作定义。"""
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
@@ -111,3 +112,69 @@ class ChooseSynthesisAction(Action):
     right_slot_idx: int
     options: List[Union[Card, str]] = field(default_factory=list)
     selected: Optional[Union[Card, str]] = None
+
+
+
+@dataclass
+class HeroPowerAction(Action):
+    """通用英雄主动能力。
+
+    字段刻意保持宽泛；固定英雄实现只读取自己需要的参数，因而无需为每个英雄
+    新增一种动作类型。
+    """
+
+    slot_idx: Optional[int] = None
+    target_idx: Optional[int] = None
+    cache_idx: Optional[int] = None
+    shop_idx: Optional[int] = None
+    choice: object = None
+    mode: Optional[str] = None
+    card: object = None
+    race: Optional[str] = None
+    amount: Optional[int] = None
+    unit: Optional[str] = None
+
+
+@dataclass
+class HeroChoiceAction(Action):
+    """英雄能力产生的统一选择动作。
+
+    ``pool_owned`` 表示候选是从卡池实际抽出的；完成选择或失败时控制器据此
+    精确归还候选，保证卡池数量守恒。创建时保存服务端快照，提交时只允许修改
+    ``selected``，防止调用方篡改候选、类型或所有权来伪造奖励。
+    """
+
+    options: List[object] = field(default_factory=list)
+    selected: object = None
+    kind: str = "card"
+    payload: dict = field(default_factory=dict)
+    pool_owned: bool = True
+    _original_options: tuple = field(init=False, repr=False)
+    _original_kind: str = field(init=False, repr=False)
+    _original_payload: dict = field(init=False, repr=False)
+    _original_pool_owned: bool = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._original_options = tuple(self.options)
+        self._original_kind = self.kind
+        self._original_payload = deepcopy(self.payload)
+        self._original_pool_owned = self.pool_owned
+
+    def integrity_valid(self) -> bool:
+        same_options = len(self.options) == len(self._original_options) and all(
+            current is original
+            if isinstance(original, Card)
+            else current == original
+            for current, original in zip(self.options, self._original_options)
+        )
+        return (
+            same_options
+            and self.kind == self._original_kind
+            and self.payload == self._original_payload
+            and self.pool_owned == self._original_pool_owned
+        )
+
+    def original_pool_candidates(self) -> list[Card]:
+        if not self._original_pool_owned:
+            return []
+        return [item for item in self._original_options if isinstance(item, Card)]

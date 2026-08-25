@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 from typing import List, Optional
 
 from star_tarven_simulator.constants.unit_prices import UNIT_PRICES
@@ -33,6 +32,12 @@ class Slot:
         self.upgrades_limit: int = 5
         self.event_handlers: List = []
 
+        # 当前实例的静态来源与英雄临时改写。Card 模板始终保持只读。
+        self.source_card = None
+        self.temporary_description: List[str] = []
+        self.temporary_handler_descriptions: set[str] = set()
+        self.derived: bool = False
+
         # 特殊数值
         self.darkness: int = 0
 
@@ -59,14 +64,19 @@ class Slot:
 
     @property
     def neighbors(self) -> List["Slot"]:
-        result: List[Slot] = []
-        slots = self.state.slots
+        indexes = set()
         i = self.index
-        if i > 0 and slots[i - 1].card_type is not None:
-            result.append(slots[i - 1])
-        if i + 1 < len(slots) and slots[i + 1].card_type is not None:
-            result.append(slots[i + 1])
-        return result
+        if i > 0:
+            indexes.add(i - 1)
+        if i + 1 < len(self.state.slots):
+            indexes.add(i + 1)
+        indexes.update(getattr(self.state, "extra_neighbors", {}).get(i, set()))
+        return [
+            self.state.slots[idx]
+            for idx in sorted(indexes)
+            if 0 <= idx < len(self.state.slots)
+            and self.state.slots[idx].card_type is not None
+        ]
 
     @property
     def left(self) -> Optional["Slot"]:
@@ -81,7 +91,7 @@ class Slot:
     @property
     def random(self) -> Optional["Slot"]:
         slots = self.all
-        return random.choice(slots) if slots else None
+        return self.state.rng.choice(slots) if slots else None
 
     # 按种族过滤（返回全场对应 tag 的非空槽）
     @property

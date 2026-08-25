@@ -7,8 +7,6 @@ key = 归一化描述文本（见 :func:`parsing.text.normalize`），普通/金
 
 from __future__ import annotations
 
-import random
-
 from star_tarven_simulator.cards.mechanics import feed, hatch, teleport
 from star_tarven_simulator.cards.registry import register, register_value
 from star_tarven_simulator.constants.card_tag import CARD_PACKAGE_INVERTED_INDEX
@@ -179,7 +177,7 @@ def _elite_tank_wolf(repeat):
                 candidates += [(s, "战狼")] * s.count("战狼")
             cnt = tech_addon_count(slot)
             if len(candidates) > cnt:
-                candidates = random.sample(candidates, cnt) if cnt <= len(candidates) else candidates
+                candidates = event.tarven.rng.sample(candidates, cnt) if cnt <= len(candidates) else candidates
             for s, unit in candidates:
                 s.replace_unit(unit, 1, unit + "(精英)", 1)
     return h
@@ -265,7 +263,7 @@ def _royal_until_top3(slot, event):
         return
     guard = 0
     while slot.price() < prices[2] and guard < 100:
-        slot.add_unit(random.choice(ROYAL_UNITS), 1)
+        slot.add_unit(event.tarven.rng.choice(ROYAL_UNITS), 1)
         guard += 1
 
 
@@ -498,7 +496,7 @@ def _gain_and_teleport_random(n):
     def h(slot, event):
         slot.add_unit("激励者", n)
         for _ in range(n):
-            teleport(slot, event, {random.choice(["不朽者", "掠夺者", "巨像"]): 1})
+            teleport(slot, event, {event.tarven.rng.choice(["不朽者", "掠夺者", "巨像"]): 1})
     return h
 
 
@@ -538,7 +536,7 @@ def _gathering_immortal_templar(n):
             if u in BIOLOGICAL_UNITS and u not in HERO_UNITS:
                 pool += [u] * c
         take = min(times * n, len(pool))
-        for u in random.sample(pool, take) if take else []:
+        for u in event.tarven.rng.sample(pool, take) if take else []:
             slot.remove_unit(u, 1)
             slot.add_unit("高阶圣堂武士", 1)
     return GatheringActionHandler(inner, 7)
@@ -777,7 +775,7 @@ def _random_pylon_to_void(n):
             candidates = [s for s in slot.all for _ in range(s.count("水晶塔"))]
             if not candidates:
                 break
-            s = random.choice(candidates)
+            s = event.tarven.rng.choice(candidates)
             s.replace_unit("水晶塔", 1, "虚空水晶塔", 1)
             event.tarven.trigger_any_card_event(
                 AnyCardGainVoidCrystalTowerEvent(event.tarven, s)
@@ -806,7 +804,7 @@ def _protoss_bio_to_immortal(n):
         for s in slot.protoss:
             pool = [u for u in s.units for _ in range(s.count(u)) if u in BIOLOGICAL_UNITS]
             take = min(n, len(pool))
-            for u in (random.sample(pool, take) if take else []):
+            for u in (event.tarven.rng.sample(pool, take) if take else []):
                 s.remove_unit(u, 1)
             s.add_unit("不朽者", take)
     return h
@@ -823,7 +821,7 @@ def _elite_entered_protoss(n):
             return
         pool = [u for u in entered.units for _ in range(entered.count(u)) if u in ELITE_UNITS]
         take = min(n, len(pool))
-        for u in (random.sample(pool, take) if take else []):
+        for u in (event.tarven.rng.sample(pool, take) if take else []):
             entered.remove_unit(u, 1)
             entered.add_unit(u + "(精英)", 1)
     return h
@@ -850,7 +848,7 @@ def _void_elite(n):
             if s.count("虚空水晶塔") > 0:
                 pool = [u for u in s.units for _ in range(s.count(u)) if u in ELITE_UNITS]
                 take = min(n, len(pool))
-                for u in (random.sample(pool, take) if take else []):
+                for u in (event.tarven.rng.sample(pool, take) if take else []):
                     s.replace_unit(u, 1, u + "(精英)", 1)
     return h
 
@@ -1029,7 +1027,7 @@ def _annihilate(slot, event):
         left.add_unit(u, c // 2)
         right.add_unit(u, c // 2)
         if c % 2:
-            (left if random.random() < 0.5 else right).add_unit(u, 1)
+            (left if event.tarven.rng.random() < 0.5 else right).add_unit(u, 1)
 
 
 reg("每回合结束时,若相邻两侧卡牌相同,则摧毁此卡牌并且相邻两侧卡牌各获得此卡牌一半的单位", "round_end", _annihilate)
@@ -1037,7 +1035,7 @@ reg("每回合结束时,若相邻两侧卡牌相同,则摧毁此卡牌并且相�
 
 def _seize_random_two(slot, event):
     others = [s for s in slot.all if s is not slot]
-    for s in random.sample(others, min(2, len(others))):
+    for s in event.tarven.rng.sample(others, min(2, len(others))):
         event.tarven.seize(s, slot)
 
 
@@ -1286,7 +1284,7 @@ reg("进场时,相邻左侧卡牌降低2星级", "entering", _left_lower_level(2
 def _seize_nonzerg(n):
     def h(slot, event):
         targets = [s for s in slot.all if s is not slot and not s.tags.has("zerg")]
-        for s in random.sample(targets, min(n, len(targets))):
+        for s in event.tarven.rng.sample(targets, min(n, len(targets))):
             event.tarven.seize(s, slot)
     return h
 
@@ -1297,7 +1295,7 @@ reg("每回合结束时,夺取场上2张非虫族卡牌", "round_end", _seize_no
 
 def _random_baneling(n):
     def h(slot, event):
-        if random.random() < 0.5:
+        if event.tarven.rng.random() < 0.5:
             slot.add_unit("跳虫(精英)", n)
         else:
             slot.remove_unit("跳虫(精英)", n)
@@ -1334,7 +1332,7 @@ def _elite_random_bio(n):
             for u in list(s.units.keys()):
                 if u in BIOLOGICAL_UNITS and not u.endswith("(精英)"):
                     pool += [(s, u)] * s.count(u)
-        for s, u in random.sample(pool, min(n, len(pool))):
+        for s, u in event.tarven.rng.sample(pool, min(n, len(pool))):
             s.replace_unit(u, 1, u + "(精英)", 1)
     return h
 
@@ -1604,7 +1602,7 @@ _STORM_HEROES = ["马拉什", "阿拉纳克", "利维坦", "虚空构造体", "�
 
 
 def _storm_hero(slot, event):
-    slot.add_unit(random.choice(_STORM_HEROES), 1)
+    slot.add_unit(event.tarven.rng.choice(_STORM_HEROES), 1)
 
 
 reg("获得升级时,随机获得1英雄(包含:马拉什、阿拉纳克、利维坦、虚空构造体、科罗拉里昂)", "upgrade", _storm_hero)

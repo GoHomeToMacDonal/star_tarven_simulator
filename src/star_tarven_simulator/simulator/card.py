@@ -77,6 +77,8 @@ class Card:
     # 由解析器填充：描述行 -> EventHandler 模板
     event_handlers: List = field(default_factory=list)
     gold_event_handlers: List = field(default_factory=list)
+    # 由英雄能力动态生成的卡牌不会归还普通卡池，也不计入干扰者静态战力。
+    derived: bool = False
 
     @property
     def price(self) -> float:
@@ -131,8 +133,10 @@ class CardPool:
         self,
         cards: List[Card],
         no_draw_uuids: Optional[set] = None,
+        rng: Optional[random.Random] = None,
     ):
         self.cards = cards
+        self.rng = rng if rng is not None else random.Random()
         self.card_map = {card.uuid: card for card in cards}
         self.card_type_map = {card.name: card for card in cards}
         self.no_draw_uuids = set(no_draw_uuids) if no_draw_uuids else set()
@@ -161,9 +165,34 @@ class CardPool:
             cards = [cards]
         for card in cards:
             if isinstance(card, Card) and 1 <= card.level <= 6:
-                if card.uuid in self.no_draw_uuids:
+                if card.derived or card.uuid in self.no_draw_uuids or card.uuid not in self.card_map:
                     continue
                 self.pool[card.level].append(card.uuid)
+
+    def take(self, card: Card) -> Optional[Card]:
+        """从公共池精确取出 ``card`` 的一份；不存在时不修改卡池。"""
+        if not isinstance(card, Card) or card.derived or card.uuid in self.no_draw_uuids:
+            return None
+        if not (1 <= card.level < len(self.pool)):
+            return None
+        bucket = self.pool[card.level]
+        try:
+            index = bucket.index(card.uuid)
+        except ValueError:
+            return None
+        bucket[index] = bucket[-1]
+        bucket.pop()
+        return self.card_map[card.uuid]
+
+    def take_by_name(self, name: str) -> Optional[Card]:
+        """按当前卡池中的静态名称取一份，不接受调用方构造的 Card 实例。"""
+        card = self.card_type_map.get(name)
+        return self.take(card) if card is not None else None
+
+    def count(self, card: Card) -> int:
+        if not isinstance(card, Card) or not (1 <= card.level < len(self.pool)):
+            return 0
+        return self.pool[card.level].count(card.uuid)
 
     def _sample(
         self,
@@ -175,27 +204,24 @@ class CardPool:
         if levels is None:
             levels = [1, 2, 3, 4, 5, 6]
 
-        weights = {level: len(self.pool[level]) for level in levels}
-        if sum(weights.values()) == 0:
+        eligible = []
+        wanted_tags = set(tags or [])
+        blocked = set(excepts or [])
+        for level in levels:
+            if not (0 <= level < len(self.pool)):
+                continue
+            for idx, uuid in enumerate(self.pool[level]):
+                card = self.card_map[uuid]
+                if uuid in blocked:
+                    continue
+                if wanted_tags and not (wanted_tags & set(card.tags)):
+                    continue
+                eligible.append((level, idx, uuid))
+        if not eligible:
             return None
 
-        for _ in range(max_sample_times):
-            available = [lv for lv, w in weights.items() if w > 0 and self.pool[lv]]
-            if not available:
-                return None
-            level = random.choices(available, weights=[len(self.pool[lv]) for lv in available])[0]
-            pool = self.pool[level]
-            idx = random.randrange(len(pool))
-            uuid = pool[idx]
-
-            if excepts is not None and uuid in excepts:
-                continue
-            if tags is not None and not (set(tags) & set(self.card_map[uuid].tags)):
-                continue
-
-            # 从卡池移除（swap-pop）
-            pool[idx] = pool[-1]
-            pool.pop()
-            return uuid
-
-        return None
+        level, idx, uuid = eligible[self.rng.randrange(len(eligible))]
+        pool = self.pool[level]
+        pool[idx] = pool[-1]
+        pool.pop()
+        return uuid
