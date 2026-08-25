@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>星际酒馆模拟器 · 测试台</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #171b22; --panel2: #1f2530; --line: #2a3140;
+    --txt: #d7dce4; --muted: #8b95a6; --accent: #4f9dff; --gold: #f5c451;
+    --terran:#4a8fd6; --protoss:#c9a24b; --zerg:#a25fd6; --neutral:#7a8290;
+    --ok:#3fb950; --bad:#f85149;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+    font:14px/1.4 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft Yahei",sans-serif; }
+  h1 { font-size:16px; margin:0; }
+  .wrap { max-width:1180px; margin:0 auto; padding:14px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:12px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .grow { flex:1; }
+  label { color:var(--muted); font-size:12px; }
+  select, input[type=number] { background:var(--panel2); color:var(--txt);
+    border:1px solid var(--line); border-radius:5px; padding:5px 7px; font-size:13px; }
+  button { background:var(--panel2); color:var(--txt); border:1px solid var(--line);
+    border-radius:5px; padding:5px 10px; cursor:pointer; font-size:13px; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.mini { padding:2px 7px; font-size:12px; }
+  button.sell { border-color:#5a3a3a; }
+  .status { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .stat b { color:#fff; }
+  .badge { background:var(--panel2); border:1px solid var(--line); border-radius:12px;
+    padding:2px 9px; font-size:12px; }
+  .zone-title { color:var(--muted); font-size:12px; text-transform:uppercase;
+    letter-spacing:.5px; margin-bottom:6px; }
+  .cards { display:grep; }
+  .cardgrid { display:flex; gap:8px; flex-wrap:wrap; }
+  .card { width:150px; min-height:120px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:7px; padding:7px; display:flex; flex-direction:column; gap:4px; position:relative; }
+  .card.empty { align-items:center; justify-content:center; color:var(--muted);
+    border-style:dashed; min-height:120px; }
+  .card.gold { border-color:var(--gold); box-shadow:0 0 0 1px rgba(245,196,81,.35) inset; }
+  .card.deploytarget { outline:2px dashed var(--accent); cursor:pointer; }
+  .card .name { font-weight:600; color:#fff; font-size:13px; display:flex;
+    justify-content:space-between; gap:4px; }
+  .card .lv { color:var(--muted); font-weight:400; font-size:11px; }
+  .card .price { color:var(--gold); font-size:12px; }
+  .race-terran{border-left:3px solid var(--terran);}
+  .race-protoss{border-left:3px solid var(--protoss);}
+  .race-zerg{border-left:3px solid var(--zerg);}
+  .race-neutral{border-left:3px solid var(--neutral);}
+  .units { font-size:11px; color:var(--txt); }
+  .units .u { display:inline-block; background:#11151c; border-radius:4px;
+    padding:1px 5px; margin:1px 2px 1px 0; }
+  .tags { font-size:10px; color:var(--muted); }
+  .desc { font-size:11px; color:var(--muted); border-top:1px solid var(--line);
+    padding-top:4px; margin-top:2px; max-height:60px; overflow:auto; }
+  .btnrow { display:flex; gap:4px; flex-wrap:wrap; margin-top:auto; padding-top:4px; }
+  .slotidx { position:absolute; top:4px; right:6px; color:var(--muted); font-size:10px; }
+  .log { background:#0a0d12; border:1px solid var(--line); border-radius:6px;
+    padding:8px; height:130px; overflow:auto; font-family:ui-monospace,monospace;
+    font-size:11px; color:var(--muted); }
+  .log div.ok { color:var(--ok); }
+  .log div.bad { color:var(--bad); }
+  .expansions { display:flex; gap:10px; flex-wrap:wrap; }
+  .expansions label { display:flex; gap:4px; align-items:center; color:var(--txt); }
+  #forceModal { position:fixed; inset:0; background:rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index:10; }
+  #forceModal.show { display:flex; }
+  .modalbox { background:var(--panel); border:1px solid var(--accent); border-radius:10px;
+    padding:16px; max-width:640px; }
+  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+    padding:8px 14px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20; }
+  .toast.show { opacity:1; }
+  .toast.bad { border-color:var(--bad); }
+  .hint { color:var(--accent); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <div class="row">
+      <h1>⭐ 星际酒馆模拟器 · 测试台</h1>
+      <span class="grow"></span>
+      <span class="badge" id="metaBadge">加载中…</span>
+    </div>
+  </div>
+
+  <!-- 新建对局 -->
+  <div class="panel">
+    <div class="zone-title">新建对局</div>
+    <div class="row">
+      <label>英雄</label>
+      <select id="heroSel"></select>
+      <label>玩家数</label>
+      <input type="number" id="userCount" value="1" min="1" max="8" style="width:60px" />
+      <label>随机种子</label>
+      <input type="number" id="seed" placeholder="随机" style="width:90px" />
+      <label><input type="checkbox" id="randomPick" /> 随机拓展包</label>
+      <button class="primary" id="newGameBtn">开始新对局</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>拓展包（至多 2）</label>
+      <div class="expansions" id="expansionsBox"></div>
+    </div>
+  </div>
+
+  <!-- 状态 -->
+  <div class="panel" id="statusPanel" style="display:none">
+    <div class="status">
+      <span class="stat">回合 <b id="stRound">-</b>/<span id="stMaxRound">-</span></span>
+      <span class="stat">英雄 <b id="stHero">-</b></span>
+      <span class="stat">等级 <b id="stLevel">-</b></span>
+      <span class="stat">💎 晶体矿 <b id="stMineral">-</b>/<span id="stMineralMax">-</span></span>
+      <span class="stat">🟢 瓦斯 <b id="stGas">-</b>/<span id="stGasMax">-</span></span>
+      <span class="stat">❤ 生命 <b id="stHealth">-</b></span>
+      <span class="stat">⚔ 总战力 <b id="stPower">-</b></span>
+      <span class="grow"></span>
+      <label>玩家</label>
+      <select id="playerSel"></select>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="roundStartBtn">▶ 回合开始</button>
+      <button id="roundEndBtn">⏹ 回合结束</button>
+      <button id="refreshBtn">🔄 刷新 (1💎)</button>
+      <button id="lockBtn">🔒 锁定</button>
+      <button id="upgradeTarvenBtn">⬆ 升级酒馆 (<span id="stLevelCost">-</span>💎)</button>
+      <span id="expLabel" class="badge"></span>
+    </div>
+    <div class="hint" id="deployHint" style="display:none;margin-top:8px"></div>
+  </div>
+
+  <!-- 卡槽 -->
+  <div class="panel" id="boardPanel" style="display:none">
+    <div class="zone-title">卡槽（场上 · 7）</div>
+    <div class="cardgrid" id="board"></div>
+  </div>
+
+  <!-- 商店 -->
+  <div class="panel" id="shopPanel" style="display:none">
+    <div class="zone-title">商店</div>
+    <div class="cardgrid" id="shop"></div>
+  </div>
+
+  <!-- 暂存区 -->
+  <div class="panel" id="cachePanel" style="display:none">
+    <div class="zone-title">暂存区</div>
+    <div class="cardgrid" id="cache"></div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="panel" id="logPanel" style="display:none">
+    <div class="zone-title">日志</div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<!-- 强制选择弹窗 -->
+<div id="forceModal">
+  <div class="modalbox">
+    <div class="zone-title" id="forcePrompt"></div>
+    <div class="cardgrid" id="forceOptions"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let STATE = null;
+let DEPLOY = null; // {source:'shop'|'cache', idx:number} 等待选择目标槽
+
+// ---------- API ----------
+async function api(path, body) {
+  const opt = body ? {method:"POST", headers:{"Content-Type":"application/json"},
+                      body:JSON.stringify(body)} : {};
+  const res = await fetch(path, opt);
+  return res.json();
+}
+async function act(payload) {
+  const s = await api("/api/action", payload);
+  if (s.error) { toast(s.error, true); }
+  else if (s.last_action) { toast(s.last_action.message, !s.last_action.ok); }
+  applyState(s);
+}
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg, bad) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = "toast", 1800);
+}
+
+// ---------- 初始化选项 ----------
+async function loadOptions() {
+  const o = await api("/api/options");
+  $("metaBadge").textContent =
+    `${o.card_count} 张卡 · 解析覆盖率 ${(o.coverage*100).toFixed(1)}%`;
+  const hero = $("heroSel");
+  hero.innerHTML = o.heroes.map(h => `<option value="${h}">${h}</option>`).join("");
+  const box = $("expansionsBox");
+  box.innerHTML = o.expansions.map(e =>
+    `<label><input type="checkbox" class="exp" value="${e}">${e}</label>`).join("");
+}
+
+function selectedExpansions() {
+  return [...document.querySelectorAll(".exp:checked")].map(c => c.value);
+}
+
+// ---------- 新对局 ----------
+$("newGameBtn").onclick = async () => {
+  const seedVal = $("seed").value.trim();
+  const s = await api("/api/new_game", {
+    hero: $("heroSel").value,
+    user_count: parseInt($("userCount").value) || 1,
+    random_pick: $("randomPick").checked,
+    expansions: selectedExpansions(),
+    seed: seedVal === "" ? null : parseInt(seedVal),
+  });
+  if (s.error) { toast(s.error, true); return; }
+  DEPLOY = null;
+  applyState(s);
+  toast("新对局已开始");
+};
+
+// ---------- 全局动作 ----------
+$("roundStartBtn").onclick = () => act({type:"round_start"});
+$("roundEndBtn").onclick   = () => act({type:"round_end"});
+$("refreshBtn").onclick    = () => act({type:"refresh"});
+$("lockBtn").onclick       = () => act({type:"lock"});
+$("upgradeTarvenBtn").onclick = () => act({type:"upgrade_tarven"});
+$("playerSel").onchange = () => act({type:"select_player", player_idx:parseInt($("playerSel").value)});
+
+// ---------- 渲染 ----------
+function raceClass(r){ return "race-" + (r||"neutral"); }
+
+function unitsHtml(units){
+  const keys = Object.keys(units);
+  if (!keys.length) return "";
+  return `<div class="units">` +
+    keys.map(k => `<span class="u">${k}×${units[k]}</span>`).join("") + `</div>`;
+}
+
+function cardInner(c, extra){
+  if (!c) return "";
+  return `
+    <div class="name">${c.name}<span class="lv">Lv${c.level}</span></div>
+    ${c.price ? `<div class="price">价值 ${c.price}${extra&&extra.buyPrice!=null?` · 售价 ${extra.buyPrice}💎`:""}</div>`
+              : (extra&&extra.buyPrice!=null?`<div class="price">售价 ${extra.buyPrice}💎</div>`:"")}
+    ${unitsHtml(c.units)}
+    ${c.tags&&c.tags.length?`<div class="tags">${c.tags.join(" · ")}</div>`:""}
+    ${c.description&&c.description.length?`<div class="desc">${c.description.join("<br>")}</div>`:""}`;
+}
+
+function renderBoard(){
+  const el = $("board");
+  el.innerHTML = STATE.slots.map(s => {
+    if (s.empty) {
+      const dep = DEPLOY ? " deploytarget" : "";
+      return `<div class="card empty${dep}" data-slot="${s.index}">
+        <span class="slotidx">#${s.index}</span>空槽</div>`;
+    }
+    const cls = ["card", raceClass(tagRace(s.tags)), s.gold?"gold":"",
+                 DEPLOY?"deploytarget":""].join(" ");
+    const c = {name:s.card_type, level:s.level, price:s.price,
+               units:s.units, tags:s.tags, description:[]};
+    let btns = "";
+    if (!DEPLOY) {
+      btns = `<div class="btnrow">
+        <button class="mini sell" data-sell="${s.index}">出售</button>
+        <button class="mini" data-upcard="${s.index}">升级(2🟢)</button>
+        <button class="mini" data-synth-slot="${s.index}">三连</button>
+      </div>`;
+    }
+    const dk = s.darkness ? ` · 黑暗${s.darkness}` : "";
+    const up = s.upgrades.length ? `<div class="tags">升级: ${s.upgrades.join(",")}${dk}</div>` : (dk?`<div class="tags">${dk}</div>`:"");
+    return `<div class="${cls}" data-slot="${s.index}">
+      <span class="slotidx">#${s.index}</span>${cardInner(c)}${up}${btns}</div>`;
+  }).join("");
+}
+
+function tagRace(tags){
+  for (const r of ["terran","protoss","zerg","neutral"])
+    if (tags.includes(r)) return r;
+  return "neutral";
+}
+
+function renderShop(){
+  $("shop").innerHTML = STATE.shop.map(e => {
+    if (!e.card) return `<div class="card empty">空</div>`;
+    const c = e.card;
+    let btns;
+    if (DEPLOY) {
+      btns = "";
+    } else if (e.is_aux) {
+      btns = `<div class="btnrow">
+        <button class="mini" data-deploy-shop="${e.idx}">部署</button>
+      </div>`;
+    } else {
+      btns = `<div class="btnrow">
+        <button class="mini primary" data-buy="${e.idx}">买→场</button>
+        <button class="mini" data-buycache="${e.idx}">买→暂存</button>
+        <button class="mini" data-synth-shop="${e.idx}">三连买</button>
+      </div>`;
+    }
+    return `<div class="card ${raceClass(c.race)}" >
+      ${cardInner(c,{buyPrice:e.price})}${btns}</div>`;
+  }).join("");
+}
+
+function renderCache(){
+  const items = STATE.cache.filter(x=>x.card);
+  if (!items.length){ $("cachePanel").style.display="none"; return; }
+  $("cachePanel").style.display="";
+  $("cache").innerHTML = STATE.cache.map(e => {
+    if (!e.card) return "";
+    const c = e.card;
+    let btns;
+    if (DEPLOY) { btns=""; }
+    else if (e.is_aux) {
+      btns = `<div class="btnrow"><button class="mini" data-deploy-cache="${e.idx}">部署</button></div>`;
+    } else {
+      btns = `<div class="btnrow">
+        <button class="mini primary" data-cacheenter="${e.idx}">进场</button>
+        <button class="mini" data-synth-cache="${e.idx}">三连</button>
+      </div>`;
+    }
+    return `<div class="card ${raceClass(c.race)}">${cardInner(c)}${btns}</div>`;
+  }).join("");
+}
+
+function renderLog(){
+  const el = $("log");
+  el.innerHTML = (STATE.log||[]).map(l => `<div>${escapeHtml(l)}</div>`).join("");
+  el.scrollTop = el.scrollHeight;
+}
+function escapeHtml(s){ return s.replace(/[&<>]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
+
+function renderForce(){
+  const fa = STATE.force_action;
+  const modal = $("forceModal");
+  if (!fa){ modal.className=""; return; }
+  modal.className = "show";
+  $("forcePrompt").textContent = fa.prompt;
+  $("forceOptions").innerHTML = fa.options.map((label,i) => {
+    const c = fa.cards && fa.cards[i];
+    const inner = c ? cardInner(c) : `<div class="name">${label}</div>`;
+    return `<div class="card ${c?raceClass(c.race):""}" style="cursor:pointer" data-force="${i}">
+      ${inner}<div class="btnrow"><button class="mini primary" data-force="${i}">选择</button></div></div>`;
+  }).join("");
+}
+
+function applyState(s){
+  if (s.error){ toast(s.error, true); }
+  if (!s || !s.active){ STATE=s; return; }
+  STATE = s;
+  $("statusPanel").style.display = "";
+  $("boardPanel").style.display = "";
+  $("shopPanel").style.display = "";
+  $("logPanel").style.display = "";
+
+  $("stRound").textContent = s.round;
+  $("stMaxRound").textContent = s.max_round;
+  $("stHero").textContent = s.hero;
+  $("stLevel").textContent = s.level;
+  $("stMineral").textContent = s.mineral;
+  $("stMineralMax").textContent = s.mineral_max;
+  $("stGas").textContent = s.gas;
+  $("stGasMax").textContent = s.gas_max;
+  $("stHealth").textContent = s.health;
+  $("stPower").textContent = s.total_power;
+  $("stLevelCost").textContent = s.level_up_cost;
+  $("lockBtn").textContent = s.lock ? "🔒 已锁定" : "🔒 锁定";
+  $("expLabel").textContent = s.enabled_expansions.length
+    ? "拓展: " + s.enabled_expansions.join(", ") : "仅核心";
+
+  // 玩家选择器
+  const psel = $("playerSel");
+  if (psel.options.length !== s.user_count) {
+    psel.innerHTML = Array.from({length:s.user_count},(_,i)=>
+      `<option value="${i}">玩家 ${i}</option>`).join("");
+  }
+  psel.value = s.player_idx;
+
+  // 部署提示
+  const dh = $("deployHint");
+  if (DEPLOY){ dh.style.display=""; dh.textContent =
+    `部署模式：点击一个场上卡槽作为目标（再次点击“部署”按钮或按 Esc 取消）`; }
+  else { dh.style.display="none"; }
+
+  renderBoard(); renderShop(); renderCache(); renderLog(); renderForce();
+}
+
+// ---------- 事件委托 ----------
+document.addEventListener("click", (ev) => {
+  const t = ev.target;
+  const d = t.dataset;
+  if (!d) return;
+
+  if (d.force !== undefined){ act({type:"force", index:parseInt(d.force)}); return; }
+  if (d.buy !== undefined){ act({type:"buy", shop_idx:parseInt(d.buy), slot_idx:firstEmpty()}); return; }
+  if (d.buycache !== undefined){ act({type:"buy", shop_idx:parseInt(d.buycache)}); return; }
+  if (d.cacheenter !== undefined){ act({type:"cache_enter", cache_idx:parseInt(d.cacheenter), slot_idx:firstEmpty()}); return; }
+  if (d.sell !== undefined){ act({type:"sell", slot_idx:parseInt(d.sell)}); return; }
+  if (d.upcard !== undefined){ act({type:"upgrade_card", slot_idx:parseInt(d.upcard)}); return; }
+  if (d.synthShop !== undefined){ act({type:"synthesis", shop_idx:parseInt(d.synthShop)}); return; }
+  if (d.synthCache !== undefined){ act({type:"synthesis", cache_idx:parseInt(d.synthCache)}); return; }
+  if (d.synthSlot !== undefined){ toast("三连请从商店或暂存区触发（需场上已有 2 张同名）"); return; }
+
+  // 进入部署模式
+  if (d.deployShop !== undefined){ DEPLOY={source:"shop", idx:parseInt(d.deployShop)}; applyState(STATE); toast("选择部署目标槽"); return; }
+  if (d.deployCache !== undefined){ DEPLOY={source:"cache", idx:parseInt(d.deployCache)}; applyState(STATE); toast("选择部署目标槽"); return; }
+
+  // 部署目标：点击卡槽
+  if (DEPLOY && d.slot !== undefined){
+    const payload = {type:"deploy", slot_idx:parseInt(d.slot)};
+    if (DEPLOY.source==="shop") payload.shop_idx = DEPLOY.idx;
+    else payload.cache_idx = DEPLOY.idx;
+    DEPLOY = null;
+    act(payload);
+    return;
+  }
+});
+
+document.addEventListener("keydown", (e)=>{
+  if (e.key==="Escape" && DEPLOY){ DEPLOY=null; applyState(STATE); toast("已取消部署"); }
+});
+
+function firstEmpty(){
+  if (!STATE) return null;
+  const s = STATE.slots.find(x=>x.empty);
+  return s ? s.index : null;
+}
+
+// ---------- 启动 ----------
+loadOptions().then(async () => {
+  const s = await api("/api/state");
+  if (s.active) applyState(s);
+});
+</script>
+</body>
+</html>
