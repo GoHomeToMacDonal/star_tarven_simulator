@@ -195,6 +195,92 @@ def test_larva_creates_egg():
     assert eggs[0].count("蟑螂") == 2
 
 
+def test_same_addon_counts_whole_board(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["恶火小队"], 0)
+    for idx in range(1, 5):
+        slot = _place(tarven, card_map["好兄弟"], idx)
+        slot.units = {"反应堆": 1}
+        slot.unit_count = 1
+    before = owner.count("恶蝠游骑兵")
+    owner.trigger([RoundEndEvent(tarven)])
+    assert owner.count("恶蝠游骑兵") == before + 1
+
+
+def test_infested_conversion_affects_every_card(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["感染深渊"], 0)
+    other = _place(tarven, card_map["好兄弟"], 1)
+    other.add_unit("被感染的陆战队员", 2)
+    owner.trigger([RoundStartEvent(tarven)])
+    assert other.count("被感染的陆战队员") == 1
+    assert other.count("畸变体") == 1
+
+
+def test_swarm_seize_moves_upgrades(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["弱肉强食"], 0)
+    for idx in range(1, 7):
+        zerg = _place(tarven, card_map["虫群先锋"], idx)
+        if idx == 1:
+            zerg.upgrades.append("测试升级")
+    owner.trigger([RoundEndEvent(tarven)])
+    assert "测试升级" in owner.upgrades
+
+
+def test_void_projection_uses_static_tag(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["聚铁成兵"], 0)
+    before = owner.count("零件")
+    owner.trigger([RoundEndEvent(tarven)])
+    assert owner.count("零件") == before + 1
+
+
+def test_dehaka_clone_uses_canonical_unit_name(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["德哈卡"], 0)
+    sold = _place(tarven, card_map["好兄弟"], 1)
+    sold.add_unit("精华", 3)
+    owner.trigger([AnyCardSoldEvent(tarven, sold)])
+    assert owner.count("德哈卡分身") == 5
+    assert owner.count("德哈卡的分身") == 0
+
+
+def test_void_tower_bonus_disappears_with_card(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["一鼓作气"], 0)
+    target = _place(tarven, card_map["好兄弟"], 1)
+    target.add_unit("虚空水晶塔", 1)
+    assert target.energy >= 2
+    tarven.destroy(owner)
+    assert target.energy == target.count("水晶塔") + target.count("虚空水晶塔")
+
+
+def test_valhalla_copies_hero(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    owner = _place(tarven, card_map["英灵殿"], 0)
+    source = Slot(0, tarven)
+    source.card_type = "来源"
+    source.add_unit("阿拉纳克", 1)
+    owner.trigger([OtherPlayerSoldHeroCardEvent(tarven, source)])
+    assert owner.count("阿拉纳克") == 1
+    assert source.count("阿拉纳克") == 1
+
+
 if __name__ == "__main__":
     import sys
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from star_tarven_simulator.cards.mechanics import feed, hatch, teleport
 from star_tarven_simulator.cards.registry import register, register_value
-from star_tarven_simulator.constants.card_tag import CARD_PACKAGE_INVERTED_INDEX
+from star_tarven_simulator.expansions import CORE_SOURCES
 from star_tarven_simulator.constants.unit_prices import UNIT_PRICES
 from star_tarven_simulator.constants.unit_type import (
     BIOLOGICAL_UNITS,
@@ -18,11 +18,7 @@ from star_tarven_simulator.constants.unit_type import (
     ROYAL_UNITS,
 )
 from star_tarven_simulator.simulator.action import ChooseCardAction
-from star_tarven_simulator.simulator.event import (
-    AnyTaskFinishedEvent,
-    EnteringEvent,
-    Event,
-)
+from star_tarven_simulator.simulator.event import EnteringEvent, Event
 from star_tarven_simulator.simulator.card import Tags
 from star_tarven_simulator.simulator.event_handler import (
     EventHandler,
@@ -132,7 +128,7 @@ reg("任意卡牌挂件变更时,相应卡牌获得2雷诺(狙击手)", "any_car
 def _same_addon_gain(n):
     def h(slot, event):
         addons = ["反应堆", "科技实验室", "高级科技实验室", "信号塔"]
-        if max((slot.count(a) for a in addons), default=0) >= 4:
+        if max((sum(s.count(a) for s in slot.all) for a in addons), default=0) >= 4:
             slot.add_unit("恶蝠游骑兵", n)
     return h
 
@@ -250,7 +246,7 @@ def _marine_to_kentaur(per):
         for s in slot.neighbors:
             s.replace_all_units("陆战队员", per, "牛头人陆战队员", 1)
             # 精英视为 2 个 -> 每 ceil(per/2) 个精英换 1
-            s.replace_all_units("陆战队员(精英)", max(1, per // 2), "牛头人陆战队员", 1)
+            s.replace_all_units("陆战队员(精英)", max(1, (per + 1) // 2), "牛头人陆战队员", 1)
     return h
 
 
@@ -258,7 +254,7 @@ reg("进场时,相邻两侧卡牌将每5个陆战队员变为1牛头人陆战队
 
 
 def _royal_until_top3(slot, event):
-    prices = sorted(s.price() for s in slot.all)
+    prices = sorted((s.price() for s in slot.all), reverse=True)
     if len(prices) < 3:
         return
     guard = 0
@@ -357,10 +353,13 @@ def _discover_aux(slot, event):
 reg("进场时,发现一张辅助卡", "entering", _discover_aux)
 
 
+_RANDOM_UPGRADES = ["聚能器", "轨道空降", "暗影战士", "折跃援军", "护盾充能", "吸血"]
+
+
 def _consume_gas_upgrade(slot, event):
-    if event.tarven.gas >= 1:
+    if event.tarven.gas >= 1 and len(slot.upgrades) < slot.upgrades_limit:
         event.tarven.gas -= 1
-        slot.upgrade("随机升级")
+        event.tarven.trigger_upgrade(slot, event.tarven.rng.choice(_RANDOM_UPGRADES))
 
 
 reg("进场时,此卡牌尝试消耗1瓦斯获得随机升级", "entering", _consume_gas_upgrade)
@@ -386,16 +385,33 @@ def _task_advanced_addon(slot, event):
             s.change_add_on("高级科技实验室")
 
 
+def _task_terran_entered(slot, event):
+    entered = getattr(event, "entered_slot", None)
+    if entered is None or not entered.tags.has("terran"):
+        return
+    counter = slot.task_vars.get("terran_enter_task", 0)
+    if counter >= 3:
+        return
+    counter += 1
+    slot.task_vars["terran_enter_task"] = counter
+    if counter == 3:
+        _task_advanced_addon(slot, event)
+        event.tarven.trigger_any_task_finished(slot)
+
+
 register_value(
     "任务:进场3张人族卡牌 奖励:相邻两侧人族卡牌的挂件类型变为高级科技实验室",
     "any_card_entered",
-    TaskActionHandler(_task_advanced_addon, 3),
+    _task_terran_entered,
 )
 
 
 def _jackson_on_finished_sold(n):
     def h(slot, event):
-        for handler in slot.event_handlers:
+        sold = getattr(event, "sold_slot", None)
+        if sold is None:
+            return
+        for handler in sold.event_handlers:
             if isinstance(handler.action_handler, TaskActionHandler) and handler.action_handler.is_finished():
                 slot.add_unit("杰克森的复仇号", n)
                 return
@@ -463,7 +479,7 @@ reg("灵能:使相邻卡牌获得黑暗容器", "round_end", _psi_darkness_conta
 
 def _psi_discover_kuangcu(slot, event):
     if slot.psi_level < event.tarven.psi_level_max:
-        event.tarven.discover()
+        event.tarven.store_card_to_cache("矿簇")
 
 
 reg("灵能:获得卡牌「矿簇」", "round_end", _psi_discover_kuangcu)
@@ -580,9 +596,7 @@ def _swarm_seize_by_level(k, levels):
         if (len(slot.zerg) + slot.has_narud) >= k:
             for s in list(slot.all):
                 if s is not slot and s.level in levels:
-                    for u, c in list(s.units.items()):
-                        slot.add_unit(u, c)
-                    event.tarven.destroy(s)
+                    event.tarven.seize(s, slot)
     return h
 
 
@@ -606,8 +620,9 @@ reg("每回合结束时,每张卡牌将4陆战队员感染,并将他们注卵", 
 
 def _infested_to_aberration(n):
     def h(slot, event):
-        for _ in range(n):
-            slot.replace_unit("被感染的陆战队员", 1, "畸变体", 1)
+        for s in slot.all:
+            for _ in range(n):
+                s.replace_unit("被感染的陆战队员", 1, "畸变体", 1)
     return h
 
 
@@ -664,7 +679,7 @@ def _nonzerg_gain(unit, n):
     def h(slot, event):
         entered = getattr(event, "entered_slot", None)
         if entered is not None and not entered.tags.has("zerg"):
-            entered.add_unit(unit, n)
+            slot.add_unit(unit, n)
     return h
 
 
@@ -734,7 +749,8 @@ reg("唯一:获得任意出售卡牌中的跳虫,并将其变为爆虫", "any_ca
 
 def _hatch_baneling(threshold):
     def h(slot, event):
-        hatch(slot, event, {"爆虫": slot.count("爆虫") // threshold})
+        total = sum(s.count("爆虫") for s in slot.all)
+        hatch(slot, event, {"爆虫": total // threshold})
     return h
 
 
@@ -871,7 +887,10 @@ reg("唯一:任意卡牌获得虚空水晶塔时,为其添加5黑暗圣堂武士
 
 def _void_glaive_check(slot, event):
     if slot.count("虚空辉光舰") > slot.energy:
+        from star_tarven_simulator.simulator.event import AnyCardGainVoidCrystalTowerEvent
+
         slot.add_unit("虚空水晶塔", 1)
+        event.tarven.trigger_any_card_event(AnyCardGainVoidCrystalTowerEvent(event.tarven, slot))
 
 
 reg("每回合结束时,若此卡牌虚空辉光舰数量大于能量强度,则获得1虚空水晶塔", "round_end", _void_glaive_check)
@@ -1058,9 +1077,12 @@ reg("每回合结束时,若场上有4个种族的卡牌,则获得2混合体毁�
 reg("每回合结束时,若场上有4个种族的卡牌,则获得4混合体毁灭者", "round_end", _four_race_gain(4))
 
 
+_VOID_PROJECTION_TAG = "具有虚空投影"
+
+
 def _neighbors_void_projection(slot, event):
     for s in slot.neighbors:
-        s.tags.add("虚空投影")
+        s.tags.add(_VOID_PROJECTION_TAG)
 
 
 reg("每回合结束时,相邻两侧卡牌获得虚空投影增益", "round_end", _neighbors_void_projection)
@@ -1069,7 +1091,7 @@ reg("每回合结束时,相邻两侧卡牌获得虚空投影增益", "round_end"
 def _left_void_projection(slot, event):
     left = slot.left
     if left is not None and left.card_type is not None:
-        left.tags.add("虚空投影")
+        left.tags.add(_VOID_PROJECTION_TAG)
 
 
 reg("进场时,相邻左侧卡牌获得虚空投影增益", "entering", _left_void_projection)
@@ -1078,7 +1100,7 @@ reg("进场时,相邻左侧卡牌获得虚空投影增益", "entering", _left_vo
 def _void_projection_gain(n):
     def h(slot, event):
         for s in slot.all:
-            if s.tags.has("虚空投影"):
+            if s.tags.has(_VOID_PROJECTION_TAG):
                 s.add_unit("混合体天罚者", n)
     return h
 
@@ -1220,23 +1242,34 @@ def _heal(n):
     return h
 
 
-reg("唯一:每回合开始时,恢复9生命值", "round_start", _heal(9))
-reg("唯一:每回合开始时,恢复18生命值", "round_start", _heal(18))
+# 这两条与紧随其后的“若场上无核心包卡牌,改为…”共同构成条件分支，
+# 由后者的组合 handler 统一结算，避免同时回血和扣血。
+reg("唯一:每回合开始时,恢复9生命值", "round_start", _noop)
+reg("唯一:每回合开始时,恢复18生命值", "round_start", _noop)
 
 
-def _damage_opponents_if_no_core(dmg):
+def _has_core_card(slot):
+    return any(
+        s is not slot
+        and getattr(s.source_card, "source", None)
+        and bool(set(s.source_card.source) & set(CORE_SOURCES))
+        for s in slot.all
+    )
+
+
+def _heal_or_damage_opponents(amount):
     def h(slot, event):
-        for s in slot.all:
-            if s.card_type in CARD_PACKAGE_INVERTED_INDEX and s.level > 0:
-                return
+        if _has_core_card(slot):
+            event.tarven.health += amount
+            return
         for tarven in event.tarven.game.tarvens:
             if tarven is not event.tarven:
-                tarven.health -= dmg
+                tarven.health -= amount
     return h
 
 
-reg("若场上无核心包卡牌,改为所有对手扣除9生命值", "round_end", _damage_opponents_if_no_core(9))
-reg("若场上无核心包卡牌,改为所有对手扣除18生命值", "round_end", _damage_opponents_if_no_core(18))
+reg("若场上无核心包卡牌,改为所有对手扣除9生命值", "round_start", _heal_or_damage_opponents(9))
+reg("若场上无核心包卡牌,改为所有对手扣除18生命值", "round_start", _heal_or_damage_opponents(18))
 
 
 def _cost_up_discover(condition):
@@ -1262,7 +1295,8 @@ def _choose_card_delayed(level):
             uuid = event.tarven.pool._sample(levels=[level])
             if uuid is not None:
                 cards.append(event.tarven.pool.card_map[uuid])
-        event.tarven.force_action.append(ChooseCardAction(cards=cards, delay=3))
+        if cards:
+            event.tarven.force_action.append(ChooseCardAction(cards=cards, delay=3))
     return h
 
 
@@ -1350,7 +1384,7 @@ def _dehaka_clone(n):
     def h(slot, event):
         sold = getattr(event, "sold_slot", None)
         if sold is not None and sold.count("精华") >= 3:
-            slot.add_unit("德哈卡的分身", n)
+            slot.add_unit("德哈卡分身", n)
     return h
 
 
@@ -1439,7 +1473,7 @@ reg("每回合结束时,相邻两侧卡牌获得2重工厂", "round_end", _neigh
 def _upgrade_kadarin(names):
     def h(slot, event):
         for s in slot.all:
-            if s.count("凯达林巨石") > 0:
+            if s.count("凯达林巨石") > 0 or s.count("凯达琳巨石") > 0:
                 for name in names:
                     s.upgrade(name)
     return h
@@ -1603,7 +1637,8 @@ _STORM_HEROES = ["马拉什", "阿拉纳克", "利维坦", "虚空构造体", "�
 
 
 def _storm_hero(slot, event):
-    slot.add_unit(event.tarven.rng.choice(_STORM_HEROES), 1)
+    if getattr(event, "upgrade_slot", None) is slot:
+        slot.add_unit(event.tarven.rng.choice(_STORM_HEROES), 1)
 
 
 reg("获得升级时,随机获得1英雄(包含:马拉什、阿拉纳克、利维坦、虚空构造体、科罗拉里昂)", "upgrade", _storm_hero)
@@ -1780,7 +1815,6 @@ def _deploy_infest(slot, event):
             target.remove_unit(u, 1)
             infested += 1
     if infested:
-        target.add_unit("被感染的陆战队员", infested)
         event.tarven.larva({"被感染的陆战队员": infested})
 
 
@@ -1819,11 +1853,8 @@ def _deploy_ghost_finish_task(slot, event):
     for handler in target.event_handlers:
         ah = handler.action_handler
         if isinstance(ah, TaskActionHandler) and not ah.is_finished():
-            ah.counter = ah.goal
-            ah.handler(target, event)
-            event.tarven.trigger_any_card_event(
-                AnyTaskFinishedEvent(event.tarven, target)
-            )
+            ah.counter = max(0, ah.goal - 1)
+            ah(target, event)
 
 
 reg("部署时,指定卡牌获得1幽魂并完成任务", "deployment", _deploy_ghost_finish_task)
@@ -1859,10 +1890,10 @@ reg("进场时,抽取相邻两侧人族卡牌2/3的单位,若挂件相同,抽取
 
 
 # --- 一鼓作气：唯一,所有虚空水晶塔提供 N 点能量强度 ------------------------
-#     设置酒馆级的能量修正（见 Slot.energy）。回合开始与进场时刷新。
+# Slot.energy 按场上仍存在的一鼓作气实例动态计算；handler 仅保留描述注册。
 def _void_tower_energy(n):
     def h(slot, event):
-        event.tarven.void_tower_energy = n
+        return None
     return h
 
 
@@ -1900,8 +1931,8 @@ def _draw_one_star(count):
     def h(slot, event):
         for _ in range(count):
             drawn = event.tarven.pool.draw(1, 1)
-            if drawn:
-                event.tarven.store_card_to_cache(drawn[0].name)
+            if drawn and not event.tarven.store_card_to_cache(drawn[0].name):
+                event.tarven.pool.place_back(drawn[0])
     return h
 
 
@@ -1973,7 +2004,6 @@ def _valhalla(first_only):
                 return
             slot.task_vars["valhalla_done"] = True
         hero = heroes[0]
-        source.remove_unit(hero, 1)
         teleport(slot, event, {hero: 1})
     return h
 

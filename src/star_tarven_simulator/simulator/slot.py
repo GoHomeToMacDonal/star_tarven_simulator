@@ -135,7 +135,15 @@ class Slot:
     @property
     def energy(self) -> int:
         total = 0
-        bonus = getattr(self.state, "void_tower_energy", 1)
+        bonus = 1
+        for s in self.all:
+            for handler in s.event_handlers:
+                desc = handler.description
+                if desc == "唯一:所有虚空水晶塔提供3点能量强度":
+                    bonus = 3
+                    break
+                if desc == "唯一:所有虚空水晶塔提供2点能量强度":
+                    bonus = max(bonus, 2)
         for s in self.neighbors + [self]:
             total += s.count("水晶塔") + s.count("虚空水晶塔") * bonus
         return total
