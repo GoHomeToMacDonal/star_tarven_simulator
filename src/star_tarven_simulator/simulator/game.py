@@ -114,6 +114,8 @@ class Tarven:
         self.extra_neighbors: Dict[int, set[int]] = {}
         self.egg_hatches_mechanical = False
         self.egg_hatches_any_race = False
+        # 虫卵按注卵调用顺序记录最后注入的单位类型；孵化所会额外孵化该单位。
+        self.last_larva_unit: str | None = None
 
         from star_tarven_simulator.simulator.hero import HeroController
         self.hero_controller = HeroController(self, hero_name)
@@ -233,8 +235,18 @@ class Tarven:
         return max((slot.psi_level for slot in self.slots), default=0)
 
     def total_power(self) -> float:
-        """场上战力；干扰者额外计入暂存区非衍生静态卡价值。"""
+        """场上原始单位价值；干扰者额外计入暂存区非衍生静态卡价值。"""
         total = sum(slot.price() for slot in self.slots)
+        if self.hero_controller.hero_name == "干扰者":
+            for item in self.cache:
+                card = self.pool.card_type_map.get(item) if isinstance(item, str) else item
+                if isinstance(card, Card) and not card.derived:
+                    total += card.price
+        return total
+
+    def total_equivalent_power(self) -> float:
+        """计入升级伤害、生存和功能收益后的场上等效战力。"""
+        total = sum(slot.equivalent_power() for slot in self.slots)
         if self.hero_controller.hero_name == "干扰者":
             for item in self.cache:
                 card = self.pool.card_type_map.get(item) if isinstance(item, str) else item
@@ -259,7 +271,14 @@ class Tarven:
         return right in left.neighbors
 
     def larva(self, units: Dict[str, int]) -> None:
-        """注卵：找到现有虫卵或空槽生成虫卵，注入单位并广播 any_card_larva。"""
+        """注卵：找到现有虫卵或空槽生成虫卵，注入单位并广播 any_card_larva。
+
+        ``units`` 保留调用方的插入顺序；最后一个正数量单位记为本轮最后注卵单位，
+        供孵化所于虫卵孵化时额外复制。每次新的注卵调用都会覆盖该记录。
+        """
+        positive_units = [unit for unit, cnt in units.items() if cnt > 0]
+        if positive_units:
+            self.last_larva_unit = positive_units[-1]
         empty_idx = None
         for i, slot in enumerate(self.slots):
             if slot.card_type == "虫卵":
@@ -435,6 +454,28 @@ class Tarven:
         # 依赖下面的全场遍历发现。
         trigger_slot.trigger([SellingEvent(self, trigger_slot)])
 
+        # 折跃援军：按升级数据传播到随机合法神族卡，并复制出售卡的生物单位。
+        # 没有合法目标时不消耗瓦斯。
+        if "折跃援军" in trigger_slot.upgrades and self.gas >= 1:
+            candidates = [
+                slot
+                for slot in self.slots
+                if (
+                    slot.card_type is not None
+                    and slot.tags.has("protoss")
+                    and "折跃援军" not in slot.upgrades
+                    and len(slot.upgrades) < slot.upgrades_limit
+                )
+            ]
+            if candidates:
+                from star_tarven_simulator.upgrades import biological_units
+
+                target = self.rng.choice(candidates)
+                if self.trigger_upgrade(target, "折跃援军"):
+                    for unit, count in biological_units(trigger_slot).items():
+                        target.add_unit(unit, count)
+                    self.gas -= 1
+
         # 虚空水晶塔转移规则：优先转移到紧邻左侧的神族卡牌；否则若紧邻
         # 右侧是神族卡牌则转移到右侧；两侧都不是神族卡牌则不转移。
         cnt = trigger_slot.count("虚空水晶塔")
@@ -482,11 +523,13 @@ class Tarven:
             slot.trigger(events)
         self.hero_controller.on_enter_after(trigger_slot)
 
-    def trigger_upgrade(self, trigger_slot: Slot, upgrade_name: str) -> None:
-        trigger_slot.upgrade(upgrade_name)
+    def trigger_upgrade(self, trigger_slot: Slot, upgrade_name: str) -> bool:
+        if not trigger_slot.upgrade(upgrade_name):
+            return False
         for slot in self.slots:
             if slot.card_type is not None:
                 slot.trigger([UpgradeEvent(self, trigger_slot, upgrade_name)])
+        return True
 
     def trigger_level_up(self, level_up_cost: int, old_level: int | None = None) -> None:
         from star_tarven_simulator.simulator.event import LevelUpEvent
@@ -566,12 +609,16 @@ class Tarven:
             slot = self.slots[action.slot_idx]
             if slot.card_type is None or len(slot.upgrades) >= slot.upgrades_limit:
                 return False
+            from star_tarven_simulator.upgrades import discover_upgrades
+
+            if self.hero_controller.hero_name == "汉森博士（异虫形态）":
+                all_zerg = list(__import__("star_tarven_simulator.simulator.hero", fromlist=["ZERG_RESEARCH_UPGRADES"]).ZERG_RESEARCH_UPGRADES)
+                names = [name for name in all_zerg if name not in slot.upgrades]
+            else:
+                names = discover_upgrades(slot)
+            if not names:
+                return False
             self.gas -= 2
-            names = (
-                list(__import__("star_tarven_simulator.simulator.hero", fromlist=["ZERG_RESEARCH_UPGRADES"]).ZERG_RESEARCH_UPGRADES)
-                if self.hero_controller.hero_name == "汉森博士（异虫形态）"
-                else ["聚能器"] * 4
-            )
             self.force_action.append(ChooseUpgradeAction(slot.index, names))
             return True
 
@@ -632,9 +679,10 @@ class Tarven:
         if isinstance(action, ChooseUpgradeAction):
             if action.selected_upgrade_name not in action.upgrade_names and action.selected_upgrade_name is not None:
                 return False
-            self.trigger_upgrade(
+            if not self.trigger_upgrade(
                 self.slots[action.slot_idx], action.selected_upgrade_name or action.upgrade_names[0]
-            )
+            ):
+                return False
             if self.hero_controller.hero_name == "汉森博士（异虫形态）":
                 self.gas = min(self.gas_max, self.gas + 1)
             self.force_action.remove(action)

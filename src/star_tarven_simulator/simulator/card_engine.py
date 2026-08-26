@@ -52,7 +52,17 @@ def _larva_action_handler(slot: Slot, event) -> None:
     event.tarven.trigger_any_card_event(
         AnyCardHatchEvent(event.tarven, slot, hatched)
     )
-    # 清空虫卵
+
+    # 孵化所：若它是虫卵的接收侧，则额外获得最后一次注卵调用中的最后一个单位。
+    # 普通孵化所额外 2 个，金色额外 3 个；只对本次确实孵化出的单位生效。
+    last_unit = getattr(event.tarven, "last_larva_unit", None)
+    if last_unit in hatched:
+        for target in (left, right):
+            if target.card_type == "孵化所":
+                target.add_unit(last_unit, 3 if target.tags.has("金色") else 2)
+
+    # 清空虫卵及其最后注卵记录
+    event.tarven.last_larva_unit = None
     event.tarven.slots[slot.index] = Slot(slot.index, event.tarven)
 
 

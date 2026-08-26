@@ -13,7 +13,9 @@ import random
 import pytest
 
 from star_tarven_simulator.loader import build_game, load_cards
+from star_tarven_simulator.simulator.action import ChooseUpgradeAction, UpgradeAction
 from star_tarven_simulator.simulator.card_engine import CardEngine
+from star_tarven_simulator.upgrades import available_upgrades, definition_map
 from star_tarven_simulator.simulator.event import (
     AnyCardAddonChangedEvent,
     AnyCardEnteredEvent,
@@ -59,7 +61,7 @@ def _place(tarven: Tarven, card, idx: int) -> Slot:
 
 def test_all_cards_load(loaded):
     cards, _ = loaded
-    assert len(cards) == 155
+    assert len(cards) == 154
 
 
 def test_coverage_threshold(loaded):
@@ -215,6 +217,51 @@ def test_larva_creates_egg():
     assert eggs[0].count("蟑螂") == 2
 
 
+def test_hatchery_copies_last_larva_unit(loaded):
+    """孵化所额外孵化最后注入虫卵的单位：普通 +2，金色 +3。"""
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+
+    for gold, bonus in ((False, 2), (True, 3)):
+        tarven = _fresh_tarven(cards)
+        hatchery = _place(tarven, card_map["孵化所"], 1)
+        if gold:
+            tarven.card_engine.make_gold(hatchery)
+        tarven.card_engine.assign_card_to_slot("虫卵", tarven.slots[2])
+        right = _place(tarven, card_map["注卵虫后"], 3)
+
+        # 同一次注卵调用中刺蛇最后；孵化所应在基础复制外再获得 bonus 个刺蛇。
+        tarven.larva({"蟑螂": 1, "刺蛇": 1})
+        before_roach = hatchery.count("蟑螂")
+        before_hydra = hatchery.count("刺蛇")
+        tarven.slots[2].trigger([RoundStartEvent(tarven)])
+
+        assert hatchery.count("蟑螂") == before_roach + 1
+        assert hatchery.count("刺蛇") == before_hydra + 1 + bonus
+        assert right.count("蟑螂") >= 1
+        assert right.count("刺蛇") >= 1
+        assert tarven.last_larva_unit is None
+
+
+def test_hatchery_tracks_last_larva_call(loaded):
+    """多次注卵时，以最后一次调用的最后一个单位作为孵化所额外产物。"""
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    hatchery = _place(tarven, card_map["孵化所"], 1)
+    tarven.card_engine.assign_card_to_slot("虫卵", tarven.slots[2])
+    _place(tarven, card_map["注卵虫后"], 3)
+
+    tarven.larva({"雷兽": 1})
+    tarven.larva({"蟑螂": 1, "刺蛇": 1})
+    before = dict(hatchery.units)
+    tarven.slots[2].trigger([RoundStartEvent(tarven)])
+
+    assert hatchery.count("雷兽") == before.get("雷兽", 0) + 1
+    assert hatchery.count("蟑螂") == before.get("蟑螂", 0) + 1
+    assert hatchery.count("刺蛇") == before.get("刺蛇", 0) + 3
+
+
 def test_same_addon_counts_whole_board(loaded):
     cards, _ = loaded
     card_map = {c.name: c for c in cards}
@@ -286,6 +333,134 @@ def test_void_tower_bonus_disappears_with_card(loaded):
     assert target.energy >= 2
     tarven.destroy(owner)
     assert target.energy == target.count("水晶塔") + target.count("虚空水晶塔")
+
+
+def test_upgrade_catalog_and_race_specific_discovery(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    protoss = _place(tarven, card_map["万叉奔腾"], 0)
+    terran = _place(tarven, card_map["好兄弟"], 1)
+    plain_neutral = _place(tarven, card_map["酒馆后勤处"], 2)
+    primal = _place(tarven, card_map["原始蟑螂"], 3)
+    void_projection = _place(tarven, card_map["虚空大军"], 4)
+
+    assert len(definition_map()) == 40
+    assert "聚能器" in available_upgrades(protoss)
+    assert "火力压制" not in available_upgrades(protoss)
+    assert "火力压制" in available_upgrades(terran)
+    assert "聚能器" not in available_upgrades(terran)
+    assert "原始甲壳" not in available_upgrades(plain_neutral)
+    assert "虚空能量" not in available_upgrades(plain_neutral)
+    assert "原始甲壳" in available_upgrades(primal)
+    assert "虚空能量" not in available_upgrades(primal)
+    assert "虚空能量" in available_upgrades(void_projection)
+    assert "原始甲壳" not in available_upgrades(void_projection)
+
+
+def test_spending_gas_discovers_three_unowned_upgrades(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    target = _place(tarven, card_map["万叉奔腾"], 0)
+    target.upgrades.append("聚能器")
+    tarven.gas = 4
+
+    assert tarven.action(UpgradeAction(slot_idx=0))
+    assert tarven.gas == 2
+    choice = tarven.force_action[0]
+    assert isinstance(choice, ChooseUpgradeAction)
+    assert len(choice.upgrade_names) == 3
+    assert "聚能器" not in choice.upgrade_names
+    choice.selected_upgrade_name = choice.upgrade_names[0]
+    assert tarven.action(choice)
+    assert choice.selected_upgrade_name in target.upgrades
+
+
+def test_equivalent_power_applies_multiplicative_upgrade_factors(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    target = _place(tarven, card_map["万叉奔腾"], 0)
+    base = target.price()
+
+    assert tarven.trigger_upgrade(target, "灼热打击")
+    assert tarven.trigger_upgrade(target, "电磁加速器")
+    assert target.equivalent_power() == pytest.approx(base * 1.2 * 1.2)
+    assert tarven.total_equivalent_power() == pytest.approx(target.equivalent_power())
+    assert tarven.total_power() == base
+
+
+def test_instant_upgrade_effects_add_real_units(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    target = _place(tarven, card_map["好兄弟"], 0)
+    before = target.count("修理无人机")
+    tarven.level = 4
+
+    assert tarven.trigger_upgrade(target, "修理无人机")
+    assert target.count("修理无人机") == before + 7
+
+
+def test_warp_reinforcements_grants_units_and_cannot_repeat(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    target = _place(tarven, card_map["万叉奔腾"], 0)
+
+    before_pylons = target.count("水晶塔")
+    before_templars = target.count("高阶圣堂武士")
+    assert tarven.trigger_upgrade(target, "折跃援军")
+    assert target.upgrades.count("折跃援军") == 1
+    assert target.count("水晶塔") == before_pylons + 3
+    assert target.count("高阶圣堂武士") == before_templars + 2
+
+    assert not tarven.trigger_upgrade(target, "折跃援军")
+    assert target.upgrades.count("折跃援军") == 1
+    assert target.count("水晶塔") == before_pylons + 3
+    assert target.count("高阶圣堂武士") == before_templars + 2
+
+
+def test_selling_warp_reinforcements_spreads_to_random_eligible_protoss(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    source = _place(tarven, card_map["万叉奔腾"], 0)
+    ineligible = _place(tarven, card_map["万叉奔腾"], 1)
+    target = _place(tarven, card_map["万叉奔腾"], 2)
+    _place(tarven, card_map["好兄弟"], 3)
+    tarven.trigger_upgrade(source, "折跃援军")
+    tarven.trigger_upgrade(ineligible, "折跃援军")
+    before_pylons = target.count("水晶塔")
+    before_templars = target.count("高阶圣堂武士")
+    tarven.gas = 2
+
+    tarven.trigger_selling(source)
+
+    assert tarven.gas == 1
+    assert "折跃援军" in target.upgrades
+    assert target.count("水晶塔") == before_pylons + 3
+    assert target.count("高阶圣堂武士") >= before_templars + 2
+    # JSON 最新规则还会复制出售卡中的生物单位。
+    assert target.count("高阶圣堂武士") >= source.count("高阶圣堂武士")
+
+
+def test_selling_warp_reinforcements_without_target_does_not_spend_gas(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    source = _place(tarven, card_map["万叉奔腾"], 0)
+    existing = _place(tarven, card_map["万叉奔腾"], 1)
+    _place(tarven, card_map["好兄弟"], 2)
+    tarven.trigger_upgrade(source, "折跃援军")
+    tarven.trigger_upgrade(existing, "折跃援军")
+    tarven.gas = 2
+
+    tarven.trigger_selling(source)
+
+    assert tarven.gas == 2
+    assert existing.upgrades.count("折跃援军") == 1
 
 
 def test_selling_void_towers_prefers_protoss_card_on_left(loaded):

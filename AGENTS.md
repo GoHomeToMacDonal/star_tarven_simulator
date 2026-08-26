@@ -139,6 +139,12 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - 相关卡：私人团队/尖端科技/星灵科技/生化实验室/秽暗饵食/超负荷/隐秘行动/冷钱包/矿簇。
   （引导核弹/核弹天劫属战斗风味，无 deployment handler，不可部署。）
 
+### 瓦斯升级与等效战力
+- 升级定义来自 `src/star_tarven_simulator/data/upgrades.json`（同步自仓库根目录 `data/upgrades/upgrades.json`）。
+- 花费 2 瓦斯从“公共 + 合法专属”池随机发现最多 3 项，自动排除已拥有升级；人/神/虫按种族开放，原始升级只对“属于原始虫群”标签开放，虚影升级只对“具有虚空投影”标签开放；不可叠加升级不能通过其它来源重复添加。
+- 一次性升级直接添加单位；持续战斗 Buff 由 `Slot.equivalent_power()` / `Tarven.total_equivalent_power()` 按伤害、攻速、生命、生存与功能倍率估值。
+- 原有 `price()` / `total_power()` 仍只统计单位基础价值，确保旧 RL 奖励与 checkpoint 协议不变。详细规则见 `docs/upgrade-system.md`。
+
 ### 本轮新增/改动的引擎能力
 - `simulator/action.py`：新增 `DeployAction(slot_idx, cache_idx=/shop_idx=)`（定点部署辅助卡）。
 - `simulator/event.py`：新增 `Event.ROUND_WIN` / `RoundWinEvent`、

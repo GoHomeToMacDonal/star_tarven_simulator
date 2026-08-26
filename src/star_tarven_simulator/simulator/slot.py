@@ -228,16 +228,25 @@ class Slot:
         self.trigger([QuickProduceEvent(self.state, self)])
         self.state.trigger_any_card_event(AnyCardAddonChangedEvent(self.state, self))
 
-    def upgrade(self, upgrade_name: str) -> None:
-        if len(self.upgrades) >= self.upgrades_limit:
-            return
+    def upgrade(self, upgrade_name: str) -> bool:
+        from star_tarven_simulator.upgrades import apply_instant_effect, is_stackable
 
-        if upgrade_name == "黄金矿工":
-            self.upgrades.append(upgrade_name)
-            self.state.card_engine.assign_card_to_slot("黄金矿工", self)
-            return
+        if len(self.upgrades) >= self.upgrades_limit:
+            return False
+        if upgrade_name in self.upgrades and not is_stackable(upgrade_name):
+            return False
 
         self.upgrades.append(upgrade_name)
+        apply_instant_effect(self, upgrade_name)
+        if upgrade_name == "黄金矿工":
+            self.state.card_engine.assign_card_to_slot("黄金矿工", self)
+        return True
+
+    def equivalent_power(self) -> float:
+        """包含瓦斯升级战斗收益的启发式等效战力。"""
+        from star_tarven_simulator.upgrades import equivalent_power
+
+        return equivalent_power(self)
 
     # ------------------------------------------------------------------
     # 事件派发（对自身 handler）

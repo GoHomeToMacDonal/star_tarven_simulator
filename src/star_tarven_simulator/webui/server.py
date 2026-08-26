@@ -139,6 +139,7 @@ def serialize_slot(slot) -> Dict[str, Any]:
         "card_type": slot.card_type,
         "level": slot.level if not empty else None,
         "price": round(slot.price(), 2) if not empty else 0.0,
+        "equivalent_power": round(slot.equivalent_power(), 2) if not empty else 0.0,
         "units": dict(slot.units) if not empty else {},
         "tags": list(slot.tags) if not empty else [],
         "upgrades": list(slot.upgrades) if not empty else [],
@@ -227,6 +228,7 @@ def serialize_state() -> Dict[str, Any]:
         "lock": t.lock,
         "free_refresh": t.free_refresh,
         "total_power": round(t.total_power(), 2),
+        "total_equivalent_power": round(t.total_equivalent_power(), 2),
         "shop": [
             {"idx": i, "card": serialize_card(c),
              "price": t.card_price(i) if c is not None else None,
