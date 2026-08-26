@@ -134,7 +134,21 @@ class Tarven:
         return has_slot if direct_only else has_slot or any(item is None for item in self.cache)
 
     def enter_card_direct(self, card: Card, *, slot_idx: int | None = None) -> bool:
-        """Put ``card`` in an empty slot and broadcast a normal entering event."""
+        """Put ``card`` in an empty slot and broadcast a normal entering event.
+
+        统一入口守卫（延迟进场、直接奖励、英雄放置等所有直接进场路径）：
+        * 虫卵在场唯一——场上已有虫卵时拒绝再进一张；
+        * 若该卡进场会与场上两张同名非金色同等级卡构成三连，则立即强制三连，
+          不允许普通进场绕开三连。
+        """
+        card_name = card.name if isinstance(card, Card) else card
+        if card_name == "虫卵" and any(s.card_type == "虫卵" for s in self.slots):
+            return False
+        locs = self._triple_pair_slots(card_name)
+        if locs:
+            return self._begin_synthesis(
+                card, locs, from_shop=False, shop_idx=None, cache_idx=None, price=0
+            )
         if slot_idx is None:
             slot = next((candidate for candidate in self.slots if candidate.card_type is None), None)
         elif 0 <= slot_idx < len(self.slots) and self.slots[slot_idx].card_type is None:
@@ -653,6 +667,10 @@ class Tarven:
             return []
         if any(handler.event_name == DeploymentEvent.event_name for handler in card.event_handlers):
             return []
+        # 虫卵在场唯一：场上已有一张虫卵时，任何来源的虫卵都不能再进场
+        # （购买直接进场 / 暂存区进场统一走这里，保证所有路径一致生效）。
+        if card.name == "虫卵" and any(s.card_type == "虫卵" for s in self.slots):
+            return []
 
         empty_slots = [slot.index for slot in self.slots if slot.card_type is None]
         if not empty_slots:
@@ -690,6 +708,23 @@ class Tarven:
                 card = self.pool.card_type_map.get(card)
             if card is None:
                 return False
+
+        # 强制三连：同名非金色卡场上最多两张。第 3 张进场（商店购买直接进场 /
+        # 暂存区进场）必须立即三连合成，不允许普通进场绕开三连。来源卡被合成
+        # 消耗（购买按买价扣矿、清空商店位；暂存区清空缓存位）。
+        if action.slot_idx is not None:
+            card_name = card.name if isinstance(card, Card) else card
+            locs = self._triple_pair_slots(card_name)
+            if locs:
+                if isinstance(action, BuyAction):
+                    return self._begin_synthesis(
+                        card, locs, from_shop=True,
+                        shop_idx=action.shop_idx, cache_idx=None, price=price,
+                    )
+                return self._begin_synthesis(
+                    card, locs, from_shop=False,
+                    shop_idx=None, cache_idx=action.cache_idx, price=0,
+                )
 
         slot_idx = action.slot_idx
         if slot_idx not in self.available_placement_slots(card):
@@ -779,6 +814,60 @@ class Tarven:
                 return True
         return False
 
+    def _triple_pair_slots(self, card_name) -> List[int]:
+        """返回可与 ``card_name`` 组成三连的两张场上卡槽。
+
+        条件与动作掩码的 :func:`_synth_can_merge` 完全一致：场上恰有两张同名、
+        非金色、非 ``无法三连`` 的卡，且两张 ``slot.level`` 相同（``merge_slots``
+        要求等级一致，否则会触发断言）。
+        """
+        locs = [
+            s.index
+            for s in self.slots
+            if (
+                s.card_type == card_name
+                and not s.tags.has("金色")
+                and not s.tags.has("无法三连")
+            )
+        ]
+        if len(locs) == 2 and self.slots[locs[0]].level == self.slots[locs[1]].level:
+            return locs
+        return []
+
+    def _begin_synthesis(
+        self,
+        card,
+        locs: List[int],
+        *,
+        from_shop: bool = False,
+        shop_idx=None,
+        cache_idx=None,
+        price: int = 0,
+    ) -> bool:
+        """消费第 3 张卡并生成三连奖励选择（ChooseSynthesisAction）。
+
+        显式 ``SynthesisAction`` 与"第 3 张卡强制三连"共用此流程：抽 3 张随机
+        卡 + 可能的聚能器升级作为奖励候选；``from_shop`` 时按 ``price`` 扣矿并
+        清空商店位，``cache_idx`` 非空时清空暂存区位，两者都为空（直接进场路径
+        的强制三连）则只消耗传入的卡本身。
+        """
+        cards: List[Union[Card, str]] = []
+        for _ in range(3):
+            uuid = self.pool._sample()
+            if uuid is not None:
+                cards.append(self.pool.card_map[uuid])
+        if len(self.slots[locs[0]].upgrades) + len(self.slots[locs[1]].upgrades) <= 4:
+            cards.append("聚能器")
+
+        if from_shop:
+            self.mineral -= price
+            self.shop[shop_idx] = None
+        elif cache_idx is not None:
+            self.cache[cache_idx] = None
+
+        self.force_action.append(ChooseSynthesisAction(locs[0], locs[1], cards))
+        return True
+
     def _handle_synthesis(self, action) -> bool:
         from_shop = isinstance(action.shop_idx, int)
         if from_shop:
@@ -790,39 +879,24 @@ class Tarven:
             )
             if card is None or self.mineral < price:
                 return False
+            shop_idx, cache_idx = action.shop_idx, None
         else:
             if not isinstance(action.cache_idx, int) or not 0 <= action.cache_idx < len(self.cache):
                 return False
             card = self.cache[action.cache_idx]
             price = 0
+            shop_idx, cache_idx = None, action.cache_idx
+
         card_name = card.name if isinstance(card, Card) else card
-        locs = [
-            s.index
-            for s in self.slots
-            if (
-                s.card_type == card_name
-                and not s.tags.has("金色")
-                and not s.tags.has("无法三连")
-            )
-        ]
-        if len(locs) != 2:
+        locs = self._triple_pair_slots(card_name)
+        if not locs:
             return False
 
-        cards: List[Union[Card, str]] = []
-        for _ in range(3):
-            uuid = self.pool._sample()
-            if uuid is not None:
-                cards.append(self.pool.card_map[uuid])
-        if len(self.slots[locs[0]].upgrades) + len(self.slots[locs[1]].upgrades) <= 4:
-            cards.append("聚能器")
-
-        if from_shop:
-            self.mineral -= price
-            self.shop[action.shop_idx] = None
-        else:
-            self.cache[action.cache_idx] = None
-
-        self.force_action.append(ChooseSynthesisAction(locs[0], locs[1], cards))
+        if not self._begin_synthesis(
+            card, locs, from_shop=from_shop,
+            shop_idx=shop_idx, cache_idx=cache_idx, price=price,
+        ):
+            return False
         if from_shop and isinstance(card, Card):
             self.hero_controller.on_shop_synthesis_purchase(card)
         return True

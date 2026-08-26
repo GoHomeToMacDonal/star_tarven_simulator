@@ -16,6 +16,7 @@ from star_tarven_simulator.simulator.action import (
     Action,
     BuyAction,
     CacheEnterAction,
+    ChooseSynthesisAction,
     HeroChoiceAction,
     HeroPowerAction,
     LockAction,
@@ -1369,6 +1370,97 @@ def test_carrier_matches_delayed_purchase_by_queue_occurrence_when_cards_share_d
 
     assert not tarven.hero_controller.receive_delayed_card(shared, delay_index=0)
     assert tarven.hero_controller.receive_delayed_card(shared, delay_index=1)
+
+
+def test_carrier_delayed_arrival_third_copy_forces_synthesis(cards):
+    """航母延迟购买到货形成第 3 张同名卡时必须强制三连，不能普通进场绕开。"""
+    tarven = _tarven(cards, "航母")
+    pair = next(card for card in cards if card.name == "好兄弟")
+    _place(tarven, pair, 0)
+    _place(tarven, pair, 1)
+    tarven.mineral = 100
+    tarven.shop[0] = pair
+
+    # 航母第 1 次购买 -> 延迟 1 回合到货
+    assert tarven.action(BuyAction(shop_idx=0))
+    assert tarven.delay_enter_card[1] == [pair]
+    assert len([s for s in tarven.slots if s.card_type == "好兄弟"]) == 2
+
+    tarven.round_start()
+
+    # 到货强制三连：不普通进场，进入 ChooseSynthesisAction
+    assert len(tarven.force_action) == 1
+    assert isinstance(tarven.force_action[0], ChooseSynthesisAction)
+    assert len([s for s in tarven.slots if s.card_type == "好兄弟"]) == 2
+    # 航母簿记保留（到货已记录，组合奖励依赖该簿记）
+    assert len(tarven.hero_controller.state["carrier_entries"]) == 1
+    assert tarven.hero_controller.state["carrier_history"].get(1) == {1: pair}
+
+    # 完成三连：左槽变金色，右槽清空
+    choice = tarven.force_action[0]
+    choice.selected = choice.options[0]
+    assert tarven.action(choice) is True
+    assert tarven.slots[0].tags.has("金色")
+    assert tarven.slots[1].card_type is None
+
+
+def test_carrier_delayed_arrival_third_copy_forces_synthesis_on_full_board(cards):
+    """7 槽满场 + 两张同名非金色 + 航母延迟第 3 张到货：仍必须强制三连，不能转存暂存区。
+
+    回归验收：receive_delayed_card 曾以 ``if empty is not None and enter_card_direct``
+    短路，场满时完全不调用统一入口，导致第 3 张同名卡被转存而非强制三连。
+    """
+    tarven = _tarven(cards, "航母")
+    pair = next(card for card in cards if card.name == "好兄弟")
+    _place(tarven, pair, 0)
+    _place(tarven, pair, 1)
+    # 填满其余 5 个槽位，场上无空位
+    filler = _blank_card("占位")
+    for index in range(2, 7):
+        _place(tarven, filler, index)
+    assert all(slot.card_type is not None for slot in tarven.slots)
+
+    tarven.mineral = 100
+    tarven.shop[0] = pair
+
+    # 航母第 1 次购买 -> 延迟 1 回合到货
+    assert tarven.action(BuyAction(shop_idx=0))
+    assert tarven.delay_enter_card[1] == [pair]
+    assert len([s for s in tarven.slots if s.card_type == "好兄弟"]) == 2
+
+    tarven.round_start()
+
+    # 场满也不转存：到货第 3 张强制三连，进入 ChooseSynthesisAction
+    assert len(tarven.force_action) == 1
+    assert isinstance(tarven.force_action[0], ChooseSynthesisAction)
+    assert len([s for s in tarven.slots if s.card_type == "好兄弟"]) == 2
+    assert not any(item is pair or item == pair.name for item in tarven.cache)
+    # 航母簿记保留（到货已记录，组合奖励依赖该簿记）
+    assert len(tarven.hero_controller.state["carrier_entries"]) == 1
+    assert tarven.hero_controller.state["carrier_history"].get(1) == {1: pair}
+
+    # 完成三连：左槽变金色，右槽清空
+    choice = tarven.force_action[0]
+    choice.selected = choice.options[0]
+    assert tarven.action(choice) is True
+    assert tarven.slots[0].tags.has("金色")
+    assert tarven.slots[1].card_type is None
+
+
+def test_carrier_delayed_egg_does_not_create_second_egg(cards):
+    """航母延迟购买到货是虫卵且场上已有虫卵时，不产生第二张，转存暂存区。"""
+    tarven = _tarven(cards, "航母")
+    egg = _blank_card("虫卵", race="zerg", units={"跳虫": 1})
+    tarven.larva({"跳虫": 1})
+    tarven.round = 3
+    tarven.delay_enter_card[3] = [egg]
+    tarven.hero_controller.state["carrier_pending"][3] = [(egg, 1, 1, 0)]
+
+    assert tarven.hero_controller.receive_delayed_card(egg, delay_index=0)
+    # 不产生第二张虫卵，被拒绝进场后转存暂存区
+    assert len([s for s in tarven.slots if s.card_type == "虫卵"]) == 1
+    assert _cache_has(tarven, egg)
+    assert tarven.hero_controller.state["carrier_entries"] == []
 
 
 

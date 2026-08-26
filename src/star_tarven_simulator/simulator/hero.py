@@ -674,15 +674,20 @@ class HeroController:
             return False
         pending.remove(record)
         delay = record[1]
+        # 真正进场复用统一守卫 enter_card_direct：虫卵在场唯一与"第 3 张同名卡
+        # 强制三连"由它统一处理（强制三连也返回 True，卡被三连消耗，不再普通进场），
+        # 避免绕过守卫直接 assign_card_to_slot。无论场上有无空位都调用统一入口：
+        # 有空位传其 index，无空位传 None，由守卫先检查强制三连、再检查空槽——因此
+        # 即使 7 槽满场，只要场上已有两张同名非金色卡，到货第 3 张仍强制三连而非转存。
+        # 到货（进场或强制三连）都记录航母簿记；进场被拒（无空位且无三连 / 虫卵唯一）
+        # 时进入暂存区，双满按航母契约直接丢弃，不能归还公共卡池。
         empty = next((slot for slot in t.slots if slot.card_type is None), None)
-        if empty is not None:
-            t.card_engine.assign_card_to_slot(card, empty)
-            t.trigger_entering(empty)
+        slot_idx = empty.index if empty is not None else None
+        if t.enter_card_direct(card, slot_idx=slot_idx):
             self.state["carrier_entries"].append((t.round, card))
             self.state["carrier_history"].setdefault(t.round, {})[delay] = card
-        else:
-            # 到期时场满则进入暂存区；双满按航母契约直接丢弃，不能归还公共卡池。
-            t.store_card_to_cache(card)
+            return True
+        t.store_card_to_cache(card)
         return True
 
     def after_delayed_cards(self) -> None:
