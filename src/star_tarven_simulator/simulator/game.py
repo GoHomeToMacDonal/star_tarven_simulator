@@ -435,12 +435,21 @@ class Tarven:
         # 依赖下面的全场遍历发现。
         trigger_slot.trigger([SellingEvent(self, trigger_slot)])
 
-        # 虚空水晶塔转移到左侧
+        # 虚空水晶塔转移规则：优先转移到紧邻左侧的神族卡牌；否则若紧邻
+        # 右侧是神族卡牌则转移到右侧；两侧都不是神族卡牌则不转移。
         cnt = trigger_slot.count("虚空水晶塔")
-        left = trigger_slot.left
-        if left is not None and left.card_type is not None and cnt > 0:
-            left.add_unit("虚空水晶塔", cnt)
-            self.trigger_any_card_event(AnyCardGainVoidCrystalTowerEvent(self, left))
+        if cnt > 0:
+            left = trigger_slot.left
+            right = trigger_slot.right
+            if left is not None and left.card_type is not None and left.tags.has("protoss"):
+                target = left
+            elif right is not None and right.card_type is not None and right.tags.has("protoss"):
+                target = right
+            else:
+                target = None
+            if target is not None:
+                target.add_unit("虚空水晶塔", cnt)
+                self.trigger_any_card_event(AnyCardGainVoidCrystalTowerEvent(self, target))
 
         for slot in self.slots:
             if slot.card_type is None:
@@ -462,13 +471,15 @@ class Tarven:
             AnyCardEnteredEvent(self, trigger_slot),
             AnyCardEnteredOrSoldEvent(self, trigger_slot),
         ]
+
+        # 进场卡自身的效果先完整结算，其他卡牌再观察“任意卡牌进场”。例如
+        # 艾尔之刃先给相邻神族卡牌添加水晶塔，随后发电站才能把新增的塔转为
+        # 虚空水晶塔；不能让槽位索引决定两类事件的先后顺序。
+        trigger_slot.trigger([EnteringEvent(self, trigger_slot)])
         for slot in self.slots:
-            if slot.card_type is None:
+            if slot.card_type is None or slot.index == trigger_slot.index:
                 continue
-            if slot.index == trigger_slot.index:
-                slot.trigger([EnteringEvent(self, trigger_slot)])
-            else:
-                slot.trigger(events)
+            slot.trigger(events)
         self.hero_controller.on_enter_after(trigger_slot)
 
     def trigger_upgrade(self, trigger_slot: Slot, upgrade_name: str) -> None:

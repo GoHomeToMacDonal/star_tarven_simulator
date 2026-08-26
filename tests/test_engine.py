@@ -147,6 +147,26 @@ def test_task_reward_mineral():
     assert tarven.mineral == 1
 
 
+def test_entering_effect_resolves_before_other_cards_observe_entry(loaded):
+    """艾尔之刃先给相邻卡加水晶塔，发电站随后应能将新塔转为虚空塔。"""
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    power_station = _place(tarven, card_map["发电站"], 0)
+    target = _place(tarven, card_map["万叉奔腾"], 1)
+
+    for slot in (power_station, target):
+        pylons = slot.count("水晶塔")
+        slot.remove_unit("水晶塔", pylons)
+        slot.add_unit("虚空水晶塔", pylons)
+
+    entering = _place(tarven, card_map["艾尔之刃"], 2)
+    tarven.trigger_entering(entering)
+
+    assert target.count("水晶塔") == 0
+    assert target.count("虚空水晶塔") == 2
+
+
 def test_swarm_condition():
     """虫群先锋：集群(1) 获得跳虫（自身即虫族，满足 >=1）。"""
     cards, _ = load_cards()
@@ -266,6 +286,57 @@ def test_void_tower_bonus_disappears_with_card(loaded):
     assert target.energy >= 2
     tarven.destroy(owner)
     assert target.energy == target.count("水晶塔") + target.count("虚空水晶塔")
+
+
+def test_selling_void_towers_prefers_protoss_card_on_left(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    left = _place(tarven, card_map["万叉奔腾"], 1)
+    sold = _place(tarven, card_map["好兄弟"], 2)
+    right = _place(tarven, card_map["发电站"], 3)
+    sold.add_unit("虚空水晶塔", 3)
+    left_before = left.count("虚空水晶塔")
+    right_before = right.count("虚空水晶塔")
+
+    tarven.trigger_selling(sold)
+
+    assert left.count("虚空水晶塔") == left_before + 3
+    assert right.count("虚空水晶塔") == right_before
+
+
+def test_selling_void_towers_falls_back_to_protoss_card_on_right(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    left = _place(tarven, card_map["好兄弟"], 1)
+    sold = _place(tarven, card_map["死神火车"], 2)
+    right = _place(tarven, card_map["万叉奔腾"], 3)
+    sold.add_unit("虚空水晶塔", 4)
+    left_before = left.count("虚空水晶塔")
+    right_before = right.count("虚空水晶塔")
+
+    tarven.trigger_selling(sold)
+
+    assert left.count("虚空水晶塔") == left_before
+    assert right.count("虚空水晶塔") == right_before + 4
+
+
+def test_selling_void_towers_has_no_target_without_adjacent_protoss(loaded):
+    cards, _ = loaded
+    card_map = {c.name: c for c in cards}
+    tarven = _fresh_tarven(cards)
+    left = _place(tarven, card_map["好兄弟"], 1)
+    sold = _place(tarven, card_map["死神火车"], 2)
+    right = _place(tarven, card_map["虫群先锋"], 3)
+    sold.add_unit("虚空水晶塔", 2)
+    left_before = left.count("虚空水晶塔")
+    right_before = right.count("虚空水晶塔")
+
+    tarven.trigger_selling(sold)
+
+    assert left.count("虚空水晶塔") == left_before
+    assert right.count("虚空水晶塔") == right_before
 
 
 def test_valhalla_copies_hero(loaded):
