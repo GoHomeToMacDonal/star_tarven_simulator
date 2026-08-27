@@ -422,6 +422,26 @@ reg("任务已完成的卡牌出售时,此卡牌获得1杰克森的复仇号", "
 reg("任务已完成的卡牌出售时,此卡牌获得2杰克森的复仇号", "any_card_sold", _jackson_on_finished_sold(2))
 
 
+# --- 帝国舰队：金色任务奖励尾部 "触发2次" 不再被静默忽略 --------------------
+#     金色完整文本：任务:进场或出售6张卡牌 奖励:获得1战列巡航舰并重置此任务,触发2次
+#     参数化解析过去把 "触发2次" 当作普通 +1（尾句被静默吞掉）。这里注册精确
+#     TaskActionHandler：goal=6、事件 any_card_entered_or_sold、auto_reset=True、
+#     一次完成获得 2 战列巡航舰；任务完成广播仍只发生一次（handler 在一次 __call__
+#     内加 2 个，TaskActionHandler 只在达到 goal 的那次调用广播）。
+#     （普通版本保持每次完成 +1，由参数化 resolve_task 处理。）
+def _battlecruiser_reward(n):
+    def h(slot, event):
+        slot.add_unit("战列巡航舰", n)
+    return h
+
+
+register_value(
+    "任务:进场或出售6张卡牌 奖励:获得1战列巡航舰并重置此任务,触发2次",
+    "any_card_entered_or_sold",
+    TaskActionHandler(_battlecruiser_reward(2), 6, auto_reset=True),
+)
+
+
 # ===========================================================================
 # 灵能
 # ===========================================================================
@@ -1594,6 +1614,10 @@ def _become_random_and_enter(slot, event):
         return
     card = event.tarven.pool.card_map[uuid]
     _transform(slot, event, card.name, reset_units=True)
+    # 抽走的随机卡真实构成该实例（身份变换保留底牌来源）：出售/摧毁时
+    # 连同底牌原卡一并归还，避免公共池泄漏。
+    if event.tarven.pool.is_pool_entity(card):
+        slot.origin_cards.append(card)
     slot.trigger([EnteringEvent(event.tarven, slot)])
 
 
@@ -1672,9 +1696,11 @@ reg("任意卡牌出售时,若其价值高于此卡牌,获得3菲尼克斯;若�
 def _scorched(destroy_neighbors):
     def h(slot, event):
         refunded = 0
-        for i, c in enumerate(event.tarven.cache):
-            if c is not None:
-                event.tarven.cache[i] = None
+        for i in range(len(event.tarven.cache)):
+            if event.tarven.cache[i] is not None:
+                # 摧毁暂存区卡牌：归还其公共池来源并同步元数据，
+                # 免费静态定义/复制来源为空则自然不归池。
+                event.tarven.clear_cache(i)
                 refunded += 1
         if destroy_neighbors:
             for s in list(slot.neighbors):
@@ -1931,8 +1957,14 @@ def _draw_one_star(count):
     def h(slot, event):
         for _ in range(count):
             drawn = event.tarven.pool.draw(1, 1)
-            if drawn and not event.tarven.store_card_to_cache(drawn[0].name):
-                event.tarven.pool.place_back(drawn[0])
+            if not drawn:
+                continue
+            card = drawn[0]
+            # 与 parametric 的"随机获得N张一星卡牌"一致：缓存优先、缓存满则强制
+            # 进场（可能触发三连）；发放失败时把原 Card 实体放回卡池，不存 name
+            # 以免丢失实体/来源。
+            if not event.tarven.grant_reward_card(card):
+                event.tarven.pool.place_back(card)
     return h
 
 

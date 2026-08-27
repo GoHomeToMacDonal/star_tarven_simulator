@@ -106,12 +106,18 @@ class ChooseUpgradeAction(Action):
 
 @dataclass
 class ChooseSynthesisAction(Action):
-    """强制动作：三连合成后的选择（3 张随机卡 + 可能的聚能器）。"""
+    """强制动作：三连合成后的选择（3 张随机卡 + 可能的聚能器）。
+
+    ``consumed_origin`` 保存被三连消耗的"第 3 张卡"的真实公共池来源（商店 /
+    暂存区 / 直接进场路径在 :meth:`~star_tarven_simulator.simulator.game.Tarven._begin_synthesis`
+    时随动作暂存），结算时合并进金卡槽，保证金卡出售/摧毁时能归还全部 3 份原卡。
+    """
 
     left_slot_idx: int
     right_slot_idx: int
     options: List[Union[Card, str]] = field(default_factory=list)
     selected: Optional[Union[Card, str]] = None
+    consumed_origin: List[Card] = field(default_factory=list)
 
 
 

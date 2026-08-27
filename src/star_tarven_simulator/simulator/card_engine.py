@@ -97,7 +97,17 @@ class CardEngine(AbstractCardEngine):
         return self
 
     # ------------------------------------------------------------------
-    def assign_card_to_slot(self, card: Union[Card, str], slot: Slot) -> None:
+    def assign_card_to_slot(
+        self, card: Union[Card, str], slot: Slot, *, origin: Union[List[Card], None] = None
+    ) -> None:
+        """把卡牌定义装载进空槽。
+
+        :param origin: 该实例的真实公共池来源份数（每项 = 一份池实体）。
+            真实进场路径（``Tarven._handle_place`` / ``enter_card_direct``）会显式传入；
+            ``None`` 时仅当槽位尚无来源才按"普通静态卡默认一份"兜底记录
+            （derived / no_draw / 未知 uuid 由 :meth:`CardPool.place_back` 自动忽略），
+            以免破坏测试与直接调用方的既有语义。
+        """
         if card == "虫卵":
             slot.card_type = "虫卵"
             slot.source_card = None
@@ -125,6 +135,11 @@ class CardEngine(AbstractCardEngine):
             slot.tags = Tags(card.tags)
             for handler in card.event_handlers:
                 slot.event_handlers.append(handler.copy(slot.state, slot))
+            if origin is not None:
+                slot.origin_cards = list(origin)
+            elif not slot.origin_cards:
+                pool = slot.state.pool
+                slot.origin_cards = [card] if pool.is_pool_entity(card) else []
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -138,7 +153,12 @@ class CardEngine(AbstractCardEngine):
         return [h for h in slot.event_handlers if h.description not in descriptions]
 
     def merge_slots(self, left_slot: Slot, right_slot: Slot) -> None:
-        """三连合成：右槽合并进左槽，换成金色 handler，右槽清空。"""
+        """三连合成：右槽合并进左槽，换成金色 handler，右槽清空。
+
+        两槽的真实公共池来源合并进左槽（第 3 张被消费卡片的来源由
+        ``ChooseSynthesisAction.consumed_origin`` 在结算时追加，见
+        ``Tarven._handle_force_action``），使金卡出售/摧毁时能归还全部 3 份原卡。
+        """
         assert left_slot.card_type == right_slot.card_type
         assert left_slot.level == right_slot.level
 
@@ -149,6 +169,9 @@ class CardEngine(AbstractCardEngine):
         for upgrade in right_slot.upgrades:
             if len(left_slot.upgrades) < left_slot.upgrades_limit:
                 left_slot.upgrades.append(upgrade)
+
+        left_slot.origin_cards = left_slot.origin_cards + right_slot.origin_cards
+        right_slot.origin_cards = []
 
         left_slot.tags.add("金色")
 
@@ -215,7 +238,11 @@ class CardEngine(AbstractCardEngine):
         ]
 
     def copy_slot(self, source: Slot, target: Slot, *, derived: bool = False) -> None:
-        """复制在场实例，不共享 Tags/units/handler 绑定。"""
+        """复制在场实例，不共享 Tags/units/handler 绑定。
+
+        复制出的实例是免费副本：不复制公共池所有权（``origin_cards`` 恒为空），
+        出售/摧毁它不会归还任何份数，避免凭空膨胀卡池。
+        """
         target.card_type = source.card_type
         target.source_card = source.source_card
         target.derived = derived or source.derived
@@ -226,12 +253,18 @@ class CardEngine(AbstractCardEngine):
         for unit, count in source.units.items():
             target.add_unit(unit, count)
         target.upgrades = list(source.upgrades)
+        target.origin_cards = []
         target.temporary_description = list(source.temporary_description)
         target.temporary_handler_descriptions = set(source.temporary_handler_descriptions)
         target.event_handlers = [h.copy(target.state, target) for h in source.event_handlers]
 
     def transform_slot(self, slot: Slot, card: Card) -> None:
-        """在原位置重载为固定/动态定义，保留槽位对象以维持外部引用。"""
+        """在原位置重载为固定/动态定义，保留槽位对象以维持外部引用。
+
+        身份/定义变换不改变实例的公共池来源：``origin_cards`` 原样保留，
+        以免出售/摧毁时丢失底牌原卡。
+        """
+        origin = list(slot.origin_cards)
         slot.card_type = None
         slot.source_card = None
         slot.level = -1
@@ -243,10 +276,14 @@ class CardEngine(AbstractCardEngine):
         slot.temporary_description = []
         slot.temporary_handler_descriptions = set()
         slot.derived = bool(card.derived)
-        self.assign_card_to_slot(card, slot)
+        self.assign_card_to_slot(card, slot, origin=origin)
 
     def fuse_card_definition(self, slot: Slot, definition: Card) -> None:
-        """把一张静态/动态定义完整融合进现有槽，不产生进场或出售事件。"""
+        """把一张静态/动态定义完整融合进现有槽，不产生进场或出售事件。
+
+        阿塔尼斯语义：融合进来的定义是免费发放（不来自公共池），因此
+        ``origin_cards`` 保持不变——最终出售/摧毁只归还底牌原卡，绝不凭空归还阿塔尼斯。
+        """
         original_name = slot.card_type
         for unit, count in definition.units.items():
             slot.add_unit(unit, count)
@@ -301,7 +338,11 @@ class CardEngine(AbstractCardEngine):
         slot.temporary_handler_descriptions = set()
 
     def fuse_slots(self, left: Slot, right: Slot) -> None:
-        """Fuse Archon targets into a dynamic result retained in the right slot."""
+        """Fuse Archon targets into a dynamic result retained in the right slot.
+
+        双方的真实公共池来源合并进右槽（左槽随后被清空），执政官成品出售/摧毁时
+        按双方全部原卡拆分归还。
+        """
         left_name, right_name = left.card_type, right.card_type
         left_races = {race for race in ("terran", "protoss", "zerg") if left.tags.has(race)}
         right_races = {race for race in ("terran", "protoss", "zerg") if right.tags.has(race)}
@@ -326,6 +367,8 @@ class CardEngine(AbstractCardEngine):
         right.card_type = f"{left_name}+{right_name}"
         right.source_card = None
         right.derived = True
+        right.origin_cards = right.origin_cards + left.origin_cards
+        left.origin_cards = []
         right.tags.add("衍生卡")
         right.tags.add("无法融合")
         right.tags.add("无法三连")

@@ -38,6 +38,13 @@ class Slot:
         self.temporary_handler_descriptions: set[str] = set()
         self.derived: bool = False
 
+        # 真实从公共池取出的构成份数（每项 = 一份池实体，允许重复代表多份）。
+        # 出售/摧毁时按这份列表精确归池；不以当前 card_type / level 推断。
+        # 三连把左右槽 origin_cards 与消费的第三张来源合并到金卡；执政官
+        # fuse_slots 合并双方；身份/定义变换（transform / 阿塔尼斯融合 /
+        # 德哈卡替换）保留底层 origin_cards；copy_slot(derived=True) 不复制。
+        self.origin_cards: List = []
+
         # 特殊数值
         self.darkness: int = 0
 

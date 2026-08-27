@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import re
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from star_tarven_simulator.cards.mechanics import feed, hatch, teleport
 from star_tarven_simulator.parsing.text import (
@@ -55,6 +55,62 @@ def detect_trigger(text: str) -> Optional[Tuple[str, str]]:
             body = text[len(prefix):].lstrip(",: ")
             return event_name, body
     return None
+
+
+# ---------------------------------------------------------------------------
+# 颜色提示 -> 机制解析器路由（16.5：colors 真正参与解析，而非死参数）
+# ---------------------------------------------------------------------------
+# 新版描述用 ``<c val="RRGGBB">关键词</c>`` 标注语义类别（颜色即机制归类）。
+# 颜色别名已由 :func:`parsing.text.extract_colors` 归一（如 7F003F -> 800040），
+# 这里把主色映射到机制类别。解析时先尝试颜色提示的机制解析器，全部失败再退回
+# 默认解析链——旧数据缺色 / 未知颜色时行为与原来完全一致。
+COLOR_HINTS: Dict[str, str] = {
+    "008000": "task",             # 任务
+    "00FF00": "quick_produce",    # 快速生产
+    "8080FF": "psi",              # 灵能
+    "DEDE00": "gathering",        # 集结
+    "FFFF00": "gathering",        # 集结（数据里的变体，如 集结(13) 的 "(13)"）
+    "FF8000": "reactor_swarm",    # 反应堆 / 集群
+    "8000FF": "feed",             # 供养
+}
+
+# 机制类别 -> 应优先尝试的解析器名（同一提示可覆盖多个机制，如 FF8000 = 反应堆/集群）
+_HINT_RESOLVER_ORDER: Dict[str, Tuple[str, ...]] = {
+    "task": ("resolve_task",),
+    "quick_produce": ("resolve_quick_produce",),
+    "psi": ("resolve_psi",),
+    "gathering": ("resolve_gathering",),
+    "reactor_swarm": ("resolve_reactor", "resolve_swarm"),
+    "feed": ("resolve_feed",),
+}
+
+
+def color_mechanism(color: str) -> Optional[str]:
+    """返回颜色提示的机制类别（``"task"``/``"quick_produce"``/``"psi"``/…）。
+
+    未知颜色返回 ``None``。颜色统一按大写比较（``extract_colors`` 已归一）。
+    """
+    return COLOR_HINTS.get(color.upper())
+
+
+def hinted_resolver_names(colors) -> List[str]:
+    """返回 ``colors`` 提示应优先尝试的解析器名（按颜色出现顺序去重）。
+
+    ``colors`` 为 :func:`parsing.text.extract_colors` 的输出（已归一颜色、大写）。
+    未出现在 :data:`COLOR_HINTS` 的颜色被忽略；无已知提示时返回空列表
+    （调用方将按默认解析链顺序尝试，兼容缺色旧数据）。
+    """
+    names: List[str] = []
+    seen = set()
+    for color, _kw in colors or []:
+        hint = color_mechanism(color)
+        if hint is None:
+            continue
+        for name in _HINT_RESOLVER_ORDER.get(hint, ()):
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +318,35 @@ def resolve_task(text: str, colors) -> Resolved:
     return (event_name, TaskActionHandler(reward, goal, auto_reset=auto_reset))
 
 
+_REPEAT_TAIL_RE = re.compile(r",触发(\d+)次$")
+
+
 def _reward_handler(reward_part: str) -> Optional[Callable]:
-    """把奖励正文编译成 handler。目前支持：获得N晶体矿、简单获得单位、降低升级费用、发现。"""
+    """把奖励正文编译成 handler。
+
+    奖励尾部 ``,触发N次`` 表示一次任务完成把基础奖励重复执行 N 次（任务完成广播仍只
+    发生一次，见 :class:`TaskActionHandler`：handler 在一次 ``__call__`` 内被调用）。
+    这是对 16.5 逐项审计的修复：帝国舰队金色曾把 "触发2次" 静默当作普通 +1 解析。
+    """
+    repeat = 1
+    m = _REPEAT_TAIL_RE.search(reward_part)
+    if m:
+        repeat = int(m.group(1))
+        reward_part = reward_part[: m.start()]
+    base = _reward_handler_once(reward_part)
+    if base is None or repeat <= 1:
+        return base
+
+    def h(slot, event, _base=base, _repeat=repeat):
+        for _ in range(_repeat):
+            _base(slot, event)
+
+    return h
+
+
+def _reward_handler_once(reward_part: str) -> Optional[Callable]:
+    """把奖励正文（不含 "触发N次" 尾部）编译成 handler。目前支持：获得N晶体矿、
+    简单获得单位、降低升级费用、发现。"""
     m = re.search(r"获得(\d+)晶体矿", reward_part)
     if m:
         amount = int(m.group(1))
@@ -297,8 +380,14 @@ def _reward_handler(reward_part: str) -> Optional[Callable]:
         def h(slot, event, _count=count):
             for _ in range(_count):
                 drawn = event.tarven.pool.draw(1, 1)
-                if drawn:
-                    event.tarven.store_card_to_cache(drawn[0].name)
+                if not drawn:
+                    continue
+                card = drawn[0]
+                # 缓存优先；缓存满则强制进场（可能触发三连）。发放失败
+                # （缓存满且无空位/无法三连）时把原 Card 实体放回卡池，
+                # 不存 card.name 以免丢失实体。
+                if not event.tarven.grant_reward_card(card):
+                    event.tarven.pool.place_back(card)
 
         return h
 
@@ -318,6 +407,16 @@ def _reward_handler(reward_part: str) -> Optional[Callable]:
 
 
 # 解析器链（顺序无关，各自靠正则/前缀独占）
+_RESOLVER_BY_NAME: Dict[str, Callable[[str, object], Resolved]] = {
+    "resolve_task": resolve_task,
+    "resolve_reactor": resolve_reactor,
+    "resolve_quick_produce": resolve_quick_produce,
+    "resolve_swarm": resolve_swarm,
+    "resolve_gathering": resolve_gathering,
+    "resolve_psi": resolve_psi,
+    "resolve_feed": resolve_feed,
+}
+
 RESOLVERS: List[Callable[[str, object], Resolved]] = [
     resolve_task,
     resolve_reactor,
@@ -330,7 +429,17 @@ RESOLVERS: List[Callable[[str, object], Resolved]] = [
 
 
 def resolve_parametric(text: str, colors) -> Resolved:
-    """尝试机制前缀解析器；失败后尝试"触发时机 + 简单正文"。"""
+    """先尝试颜色提示的机制解析器，再按默认顺序尝试全部解析器。
+
+    ``colors`` 来自 :func:`parsing.text.extract_colors`（颜色即语义类别）。颜色提示
+    只改变优先尝试顺序、不改变判定（各机制解析器按前缀/正则互斥），因此旧数据缺色
+    或未知颜色时（提示列表为空）行为与原来完全一致。
+    """
+    for name in hinted_resolver_names(colors):
+        result = _RESOLVER_BY_NAME[name](text, colors)
+        if result is not None:
+            return result
+
     for resolver in RESOLVERS:
         result = resolver(text, colors)
         if result is not None:

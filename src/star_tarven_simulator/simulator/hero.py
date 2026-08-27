@@ -409,7 +409,9 @@ class HeroController:
         elif self.hero_name == "汉森博士" and self.state.get("hansen_field_due") == t.round:
             card = t.pool.card_type_map.get("斯台特曼")
             if card is not None:
-                t.grant_reward_card(card)
+                # 免费发放的静态定义不来自公共池：显式 origin=[]，
+                # 防止出售时凭空归还一份从未抽取的斯台特曼。
+                t.grant_reward_card(card, origin=[])
             self.state["hansen_field_due"] = None
         elif self.hero_name == "进化腔":
             self.state["mutation_refreshes"] = max(0, 3 - len([s for s in t.slots if s.tags.has("zerg")]))
@@ -953,8 +955,11 @@ class HeroController:
                 if uuid is None:
                     continue
                 replacement = t.pool.card_map[uuid]
-                # 每一项独立提交：只有成功抽到替代项后才归还旧卡并覆盖缓存。
-                t.pool.place_back(card)
+                # 每一项独立提交：只归还该格真实记录的公共池来源（免费静态
+                # 定义/字符串来源为空，不归池），新卡记录为新来源并覆盖缓存，
+                # 保持 cache_origin 元数据与归池一致、不泄漏不重复。
+                t.pool.place_back(t.cache_origin[index] or [])
+                t.cache_origin[index] = [replacement]
                 t.cache[index] = replacement
                 changed += 1
             if changed == 0:

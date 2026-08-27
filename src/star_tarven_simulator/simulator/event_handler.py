@@ -48,7 +48,10 @@ class TaskActionHandler:
     """任务（任务:… 奖励:…）包装器。
 
     内部维护 ``counter``，达到 ``goal`` 时调用奖励 handler 并广播
-    :class:`AnyTaskFinishedEvent`。``copy()`` 会隔离计数器。
+    :class:`AnyTaskFinishedEvent`。非 ``auto_reset``（一次性任务）在首次达到
+    ``goal`` 后置 ``completed``，此后不再奖励，直到 :meth:`reset`；
+    ``auto_reset`` 任务保持每 ``goal`` 次触发奖励并归零。``copy()`` 隔离
+    计数器并返回全新未完成实例。
     """
 
     def __init__(self, handler: Callable, goal: int, auto_reset: bool = False):
@@ -56,27 +59,34 @@ class TaskActionHandler:
         self.goal = goal
         self.counter = 0
         self.auto_reset = auto_reset
+        # 一次性任务完成后置位；reset() 恢复可计数。
+        self.completed = False
 
     def copy(self) -> "TaskActionHandler":
         return TaskActionHandler(self.handler, self.goal, self.auto_reset)
 
     def is_finished(self) -> bool:
-        return self.counter >= self.goal
+        return self.completed
 
     def reset(self) -> None:
         self.counter = 0
+        self.completed = False
 
     def __call__(self, slot: "Slot", event):
+        if self.completed:
+            return
         if self.counter < self.goal:
             self.counter += 1
 
-        if self.counter == self.goal:
+        if self.counter >= self.goal:
             self.handler(slot, event)
             event.tarven.trigger_any_card_event(
                 AnyTaskFinishedEvent(event.tarven, slot)
             )
             if self.auto_reset:
                 self.counter = 0
+            else:
+                self.completed = True
 
 
 # 任何"可复制"的包装器类型

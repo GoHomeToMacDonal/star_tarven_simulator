@@ -44,7 +44,13 @@ class Coverage:
 
 
 def load_cards(path=DEFAULT_DATA_PATH) -> Tuple[List[Card], Coverage]:
-    """加载并解析所有卡牌，返回 (cards, coverage)。"""
+    """加载并解析所有卡牌，返回 (cards, coverage)。
+
+    返回的每张卡在 ``parse_card`` 完成后已被 :meth:`Card.seal` 密封：
+    加载后的静态定义运行时不可变（列表字段转 tuple、``units`` 转
+    ``MappingProxyType``、字段赋值抛 ``AttributeError``）。覆盖率统计只读
+    ``description`` / ``gold_description``，密封不影响遍历。
+    """
     from star_tarven_simulator.cards import is_passive, resolve
     from star_tarven_simulator.parsing.parser import prepared_lines
     from star_tarven_simulator.parsing.text import extract_colors, register_units
@@ -64,6 +70,9 @@ def load_cards(path=DEFAULT_DATA_PATH) -> Tuple[List[Card], Coverage]:
     # 第二遍：解析效果并统计覆盖率
     for card in raw_cards:
         parse_card(card)
+        # handler 模板填充完成后立即密封：加载后的卡牌定义运行时只读。
+        # 后续覆盖率统计与引擎构建都只读卡字段，密封不影响它们。
+        card.seal()
 
         for desc_list in (card.description, card.gold_description):
             for norm, raw in prepared_lines(desc_list):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import List, Union
 
 from star_tarven_simulator.simulator.card import Card
 
@@ -12,7 +12,9 @@ class AbstractCardEngine(ABC):
     """卡牌引擎抽象基类。"""
 
     @abstractmethod
-    def assign_card_to_slot(self, card: Union["Card", str], slot) -> None:
+    def assign_card_to_slot(
+        self, card: Union["Card", str], slot, *, origin: Union[List[Card], None] = None
+    ) -> None:
         ...
 
     @abstractmethod

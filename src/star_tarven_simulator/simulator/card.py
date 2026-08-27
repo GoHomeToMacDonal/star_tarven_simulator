@@ -7,6 +7,11 @@
 * :meth:`Card.from_json` 直接消费新版 ``v260822`` 结构（``units`` 为 dict、``description`` /
   ``gold_description`` 为字符串列表、``tags`` / ``gold_tags`` 显式给出）。
 * :class:`CardPool` 用标准库 ``random`` 做按等级加权采样，去除 numpy 依赖。
+* 加载后的 :class:`Card` 是**运行时不可变**的（16.10 裁决）：加载器在
+  ``parse_card`` 填完 handler 模板后调用 :meth:`Card.seal`，把列表字段转 tuple、
+  ``units`` 转 ``types.MappingProxyType``，并禁止任何字段赋值（抛
+  :class:`AttributeError`）。需要"改一张卡"时用 :func:`dataclasses.replace`
+  生成新卡（新卡默认未 seal）。动态派生的卡照常由英雄代码构造。
 
 :class:`CardPool` 的采样性能（设计决策，改动前请先跑 ``tests/test_card_pool.py``）：
 
@@ -28,6 +33,7 @@ from __future__ import annotations
 
 import copy
 import random
+import types
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -76,7 +82,28 @@ class Tags:
 
 @dataclass
 class Card:
-    """一张卡牌的静态定义（由 JSON 反序列化得到）。"""
+    """一张卡牌的静态定义（由 JSON 反序列化得到，加载后运行时不可变）。
+
+    生命周期：:meth:`Card.from_json` 构造（未 seal，可写）→
+    :func:`parsing.parser.parse_card` 就地填充 ``event_handlers`` /
+    ``gold_event_handlers`` 模板 → :meth:`Card.seal` 固化。密封后：
+
+    * 所有列表字段转为 ``tuple``（``append`` / ``remove`` / 下标赋值都会抛错）；
+    * ``units`` 转为 :class:`types.MappingProxyType`（原地写入抛 ``TypeError``）；
+    * 任何字段重新赋值抛 :class:`AttributeError`。
+
+    需要"改一张卡"时用 :func:`dataclasses.replace` 从静态定义生成新卡：新卡
+    默认**未** seal、字段可自由赋值，且原卡不受影响（英雄代码的动态派生卡
+    走这条路径，见 ``simulator/hero.py`` 的 ``_initial_copy``）。
+
+    * :func:`dataclasses.replace` 不依赖 :func:`copy.copy`：CPython 3.12 的
+      replace 直接 ``Card(**changes)`` 走类构造器建新实例；``_sealed`` 是
+      ``init=False`` 字段，构造器不接收它，且 :meth:`__post_init__` 总会把它
+      复位为 ``False``，所以新卡自然未 seal。
+    * 默认 :func:`copy.copy` 则**保留**封印：浅拷贝逐字段复制 ``__dict__``
+      （含 ``_sealed``），sealed 卡的副本仍 sealed、依旧不可写——不会借
+      浅拷贝绕过运行时不可变保护。
+    """
 
     uuid: int
     name: str
@@ -95,6 +122,13 @@ class Card:
     gold_event_handlers: List = field(default_factory=list)
     # 由英雄能力动态生成的卡牌不会归还普通卡池，也不计入干扰者静态战力。
     derived: bool = False
+    # 密封标志（init=False，见 seal()）；不在 repr/eq 中参与比较。
+    # __post_init__ 保证任何构造路径都以未密封状态起步。
+    _sealed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """任何构造路径（``from_json`` / 直接构造 / 英雄动态卡）都以未密封起步。"""
+        self._sealed = False
 
     @property
     def price(self) -> float:
@@ -132,16 +166,63 @@ class Card:
 
         return card
 
+    # ------------------------------------------------------------------
+    # 运行时不可变（seal）契约
+    # ------------------------------------------------------------------
+    def seal(self) -> None:
+        """把加载期确定的字段固化为运行时不可变（幂等，可重复调用）。
+
+        依次做三件事：
+
+        1. 全部列表字段（``description`` / ``gold_description`` / ``tags`` /
+           ``gold_tags`` / ``source`` / ``event_handlers`` /
+           ``gold_event_handlers``）转为 ``tuple``，杜绝 ``append`` /
+           ``remove`` / 下标赋值等原地修改；
+        2. ``units`` 转为 :class:`types.MappingProxyType`（先 ``dict()`` 拷贝再
+           包装，代理与任何外部引用解耦），原地写入抛 :class:`TypeError`；
+        3. 置 ``_sealed`` 标志，此后任何字段重新赋值抛 :class:`AttributeError`
+           （见 :meth:`__setattr__`）。
+
+        加载器在 ``parse_card`` 填完 handler 模板后调用本方法；此后整卡在
+        运行时只读，``CardPool`` 跨局克隆（``__deepcopy__`` 按引用共享）才能
+        安全成立。已密封的卡再次调用是空操作。
+        """
+        if getattr(self, "_sealed", False):
+            return
+        self.description = tuple(self.description)
+        self.gold_description = tuple(self.gold_description)
+        self.tags = tuple(self.tags)
+        self.gold_tags = tuple(self.gold_tags)
+        self.source = tuple(self.source)
+        self.event_handlers = tuple(self.event_handlers)
+        self.gold_event_handlers = tuple(self.gold_event_handlers)
+        self.units = types.MappingProxyType(dict(self.units))
+        object.__setattr__(self, "_sealed", True)
+
+    def __setattr__(self, name: str, value) -> None:
+        """密封后禁止任何字段赋值（运行时不可变契约）。
+
+        未 seal（构造期 / ``from_json`` / ``dataclasses.replace`` 生成的新卡）
+        时行为与普通 dataclass 完全一致；已 seal 后一切赋值抛
+        :class:`AttributeError`，提示改用 :func:`dataclasses.replace`。
+        """
+        if getattr(self, "_sealed", False):
+            raise AttributeError(
+                f"Card {getattr(self, 'name', '?')!r} 已 seal，禁止修改字段 "
+                f"{name!r}；如需变更请用 dataclasses.replace 生成新卡"
+            )
+        object.__setattr__(self, name, value)
+
     def __str__(self) -> str:
         return f"{self.name}({self.level})"
 
     def __deepcopy__(self, memo):
         """卡牌是加载期确定的静态定义，运行时只读，因此深拷贝按值共享。
 
-        全仓不存在对 :class:`Card` 字段的运行时写操作（需要"改一张卡"的地方一律用
-        ``dataclasses.replace`` 造新对象），所以共享实例不会让克隆局与原局互相影响。
-        收益：``mud_agent`` 的 ``clone_game``（``copy.deepcopy(game)``）不再复制上百个
-        Card 及其 handler 模板。
+        加载后每张卡都已 :meth:`seal`（字段赋值抛错、嵌套容器不可原地修改），
+        "改一张卡"一律走 ``dataclasses.replace`` 造新对象，因此共享实例不会让
+        克隆局与原局互相影响。收益：``mud_agent`` 的 ``clone_game``
+        （``copy.deepcopy(game)``）不再复制上百个 Card 及其 handler 模板。
         """
         return self
 
@@ -239,6 +320,21 @@ class CardPool:
             return []
         uuids = self._uuids
         return [uuids[dense] for dense in self._buckets[level]]
+
+    def is_pool_entity(self, card) -> bool:
+        """该 Card 是否代表一份真实的公共池实体（可抽取、非衍生、存在于池中）。
+
+        判断依据与 :meth:`place_back` 的忽略条件互补：``derived`` / ``no_draw`` /
+        未知 uuid 的卡不属于公共池实体，出售/摧毁时不应被归池，否则会凭空膨胀卡池。
+        免费生成的静态定义（如英雄直接发放的卡池内卡牌）不是实体，调用方必须通过
+        显式 ``origin=[]`` 覆盖本判断（见 ``Tarven.grant_reward_card`` / ``enter_card_direct``）。
+        """
+        return (
+            isinstance(card, Card)
+            and not card.derived
+            and card.uuid in self._dense
+            and card.uuid not in self.no_draw_uuids
+        )
 
     def set_bucket(self, level: int, uuids: List[int]) -> None:
         """整桶替换（测试 / 场景构造用）。未知 uuid 会被忽略。"""

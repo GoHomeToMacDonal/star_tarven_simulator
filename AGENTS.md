@@ -96,7 +96,7 @@ src/star_tarven_simulator/
 - 随机拓展包：`uv run python -m star_tarven_simulator.loader --random`
 - 测试：`uv run pytest tests/test_engine.py tests/test_expansions.py -q`
 
-当前效果解析覆盖率 **100%**（629/629 合并后描述行）。所有描述行均已解析为 handler；其中部分依赖
+当前效果解析覆盖率 **100%**（625/625 合并后描述行）。所有描述行均已解析为 handler；其中部分依赖
 "休眠事件"（效果体已实现，触发时机需上层驱动，见下）。
 
 - **回归起源**：`每回合结束时,若场上其他卡牌星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和3瓦斯`
@@ -118,7 +118,7 @@ src/star_tarven_simulator/
 接口（`expansions.py`）：`validate_selection` / `random_expansions(count=,rng=)` /
 `enabled_sources` / `filter_cards(cards, expansions)`。`loader.build_game(cards, expansions=None,
 random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终选择记到 `game.enabled_expansions`。
-命中数据：默认卡池 114/155；开任一拓展包后按其卡数扩充（如 `时不我待`/`中世纪集市` 各 +8）。
+命中数据：默认卡池 114/154；开任一拓展包后按其卡数扩充（如 `时不我待`/`中世纪集市` 各 +8）。
 
 ### 休眠事件（已实现、需外部驱动，默认不触发）
 部分效果的触发时机在"酒馆经济"里没有对应动作，但效果体已正确实现，接入上层驱动即可生效：
@@ -171,9 +171,9 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - `simulator/event.py`：新增 `Event.ROUND_WIN` / `RoundWinEvent`、
   `Event.OTHER_PLAYER_SOLD_HERO_CARD` / `OtherPlayerSoldHeroCardEvent`（均为休眠事件）。
 - `simulator/game.py`：`Tarven.trigger_round_win()`、`Tarven.trigger_other_player_hero_card()`、
-  `Tarven.trigger_deployment()` + `_handle_deploy()`（`action()` 分发 `DeployAction`）；
-  `Tarven.void_tower_energy`（默认 1）。
-- `simulator/slot.py`：`Slot.energy` 读取 `state.void_tower_energy`，使"一鼓作气"能让虚空水晶塔提供 2/3 点能量。
+  `Tarven.trigger_deployment()` + `_handle_deploy()`（`action()` 分发 `DeployAction`）。
+- `simulator/slot.py`：`Slot.energy` 按场上"一鼓作气"handler 的描述动态计算能量，
+  使虚空水晶塔提供 2/3 点能量（不依赖任何状态字段）。
 - `cards/overrides.py`：新增 `_transform(slot,event,card_name,reset_units=)` 自定义变身原语
   （难民营地/刀锋女王/望梅止渴随机卡牌），以及 `_upgrade_shop_card` 商店提星原语。
 

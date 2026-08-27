@@ -11,9 +11,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from star_tarven_simulator.constants.tarven import (
+    TARVEN_MAX_LEVEL,
     TARVEN_UPGRADE_COST,
     TARVEN_SHOP_CARD_NUMBER,
 )
@@ -90,14 +91,16 @@ class Tarven:
         self.health = 100
         self.round = 0
 
-        # 神族"虚空水晶塔"提供的能量强度（默认 1，"一鼓作气"可改为 2/3）
-        self.void_tower_energy = 1
-
         # 卡片
         self.pool: CardPool = pool
         self.rng = pool.rng
         self.shop: List[Card] = [None] * TARVEN_SHOP_CARD_NUMBER[self.level]
         self.cache: List[Union[str, Card, None]] = [None] * 6
+        # 与 cache 并行的来源元数据：None 表示免费衍生/静态定义（不归池），
+        # 列表表示真实从公共池取出的份数（每项 = 一份池实体）。进场/部署/三连/
+        # 干扰者替换/焦土销毁等所有直接改 cache 的路径都必须同步维护它，
+        # 否则免费生成的静态定义会凭空膨胀卡池，或真实实体在销毁时泄漏。
+        self.cache_origin: List[Optional[List[Card]]] = [None] * 6
         self.slots: List[Slot] = [Slot(idx, self) for idx in range(7)]
 
         self.lock = False
@@ -123,33 +126,69 @@ class Tarven:
     # ------------------------------------------------------------------
     # 辅助
     # ------------------------------------------------------------------
-    def store_card_to_cache(self, card_type) -> bool:
+    def store_card_to_cache(self, card_type, *, origin: Optional[List] = None) -> bool:
+        """存一张卡到暂存区，并记录其公共池来源份数。
+
+        ``origin`` 缺省时按"池实体"判断：只有真实从公共池取出的 Card 才记一份；
+        名字字符串（免费静态定义，如 矿簇/冷钱包/我叫小明 的复制）记为空来源。
+        """
+        if origin is None:
+            origin = (
+                [card_type]
+                if isinstance(card_type, Card) and self.pool.is_pool_entity(card_type)
+                else []
+            )
         for i, cache in enumerate(self.cache):
             if cache is None:
                 self.cache[i] = card_type
+                self.cache_origin[i] = list(origin)
                 return True
         return False
+
+    def clear_cache(self, idx: int) -> None:
+        """清空暂存区某格：归还其公共池来源并同步元数据（防泄漏/防重复）。"""
+        if 0 <= idx < len(self.cache) and self.cache[idx] is not None:
+            self.pool.place_back(self.cache_origin[idx] or [])
+            self.cache_origin[idx] = None
+            self.cache[idx] = None
+
+    def _return_origin(self, slot: Slot) -> None:
+        """归还槽位实例的真实公共池份数，并清空来源记录（防止重复归还）。"""
+        self.pool.place_back(slot.origin_cards)
+        slot.origin_cards = []
 
     def can_receive_reward(self, *, direct_only: bool = False) -> bool:
         """Whether a hero reward can be accepted without discarding another card."""
         has_slot = any(slot.card_type is None for slot in self.slots)
         return has_slot if direct_only else has_slot or any(item is None for item in self.cache)
 
-    def enter_card_direct(self, card: Card, *, slot_idx: int | None = None) -> bool:
+    def enter_card_direct(self, card: Card, *, slot_idx: int | None = None, origin: Optional[List] = None) -> bool:
         """Put ``card`` in an empty slot and broadcast a normal entering event.
 
+        :param origin: 该实例的真实公共池来源份数。缺省时按"池实体"判断：
+            免费发放的静态定义（如汉森博士的斯台特曼）必须显式传 ``origin=[]``，
+            否则出售时会凭空归还一份从未抽取的卡。
+
         统一入口守卫（延迟进场、直接奖励、英雄放置等所有直接进场路径）：
+        * 含 ``部署时`` handler 的辅助卡拒绝直接常驻进场（缓存里仍可保留，
+          必须通过 DeployAction 定点部署）；
         * 虫卵在场唯一——场上已有虫卵时拒绝再进一张；
         * 若该卡进场会与场上两张同名非金色同等级卡构成三连，则立即强制三连，
           不允许普通进场绕开三连。
         """
         card_name = card.name if isinstance(card, Card) else card
+        if isinstance(card, Card) and any(
+            handler.event_name == DeploymentEvent.event_name
+            for handler in card.event_handlers
+        ):
+            return False
         if card_name == "虫卵" and any(s.card_type == "虫卵" for s in self.slots):
             return False
         locs = self._triple_pair_slots(card_name)
         if locs:
             return self._begin_synthesis(
-                card, locs, from_shop=False, shop_idx=None, cache_idx=None, price=0
+                card, locs, from_shop=False, shop_idx=None, cache_idx=None, price=0,
+                consumed_origin=origin,
             )
         if slot_idx is None:
             slot = next((candidate for candidate in self.slots if candidate.card_type is None), None)
@@ -159,17 +198,22 @@ class Tarven:
             slot = None
         if slot is None:
             return False
-        self.card_engine.assign_card_to_slot(card, slot)
+        self.card_engine.assign_card_to_slot(card, slot, origin=origin)
         self.trigger_entering(slot)
         return True
 
-    def grant_reward_card(self, card: Card, *, direct_only: bool = False) -> bool:
-        """Grant a hero card reward using the contract's cache/overflow policy."""
+    def grant_reward_card(self, card: Card, *, direct_only: bool = False, origin: Optional[List] = None) -> bool:
+        """Grant a hero card reward using the contract's cache/overflow policy.
+
+        ``origin`` 记录这份奖励是否真实来自公共池：免费发放的静态定义传 ``[]``。
+        """
+        if origin is None and isinstance(card, Card):
+            origin = [card] if self.pool.is_pool_entity(card) else []
         if direct_only:
-            return self.enter_card_direct(card)
-        if self.store_card_to_cache(card):
+            return self.enter_card_direct(card, origin=origin)
+        if self.store_card_to_cache(card, origin=origin):
             return True
-        return self.enter_card_direct(card)
+        return self.enter_card_direct(card, origin=origin)
 
     def resize_shop_for_level(self) -> None:
         """让商店容量与当前酒馆等级一致，并归还缩容时移出的卡。"""
@@ -274,27 +318,34 @@ class Tarven:
         """注卵：找到现有虫卵或空槽生成虫卵，注入单位并广播 any_card_larva。
 
         ``units`` 保留调用方的插入顺序；最后一个正数量单位记为本轮最后注卵单位，
-        供孵化所于虫卵孵化时额外复制。每次新的注卵调用都会覆盖该记录。
+        供孵化所于虫卵孵化时额外复制。只有注卵真正生效——复用现有虫卵并加单位，
+        或确实在空槽创建了虫卵——才更新该记录；场满且无虫卵时注卵无效，不更新。
         """
         positive_units = [unit for unit, cnt in units.items() if cnt > 0]
-        if positive_units:
-            self.last_larva_unit = positive_units[-1]
-        empty_idx = None
-        for i, slot in enumerate(self.slots):
+
+        # 优先复用现有虫卵
+        for slot in self.slots:
             if slot.card_type == "虫卵":
                 for unit_type, cnt in units.items():
                     slot.add_unit(unit_type, cnt)
+                if positive_units:
+                    self.last_larva_unit = positive_units[-1]
                 self.trigger_any_card_larva(slot)
                 return
-            if slot.card_type is None and empty_idx is None:
-                empty_idx = i
 
-        if empty_idx is not None:
-            self.slots[empty_idx] = Slot(empty_idx, self)
-            self.card_engine.assign_card_to_slot("虫卵", self.slots[empty_idx])
-            for unit_type, cnt in units.items():
-                self.slots[empty_idx].add_unit(unit_type, cnt)
-            self.trigger_any_card_larva(self.slots[empty_idx])
+        # 无虫卵：找到空槽创建新虫卵
+        for i, slot in enumerate(self.slots):
+            if slot.card_type is None:
+                self.slots[i] = Slot(i, self)
+                self.card_engine.assign_card_to_slot("虫卵", self.slots[i])
+                for unit_type, cnt in units.items():
+                    self.slots[i].add_unit(unit_type, cnt)
+                if positive_units:
+                    self.last_larva_unit = positive_units[-1]
+                self.trigger_any_card_larva(self.slots[i])
+                return
+
+        # 场满且无虫卵：注卵失败，不更新 last_larva_unit。
 
     def gain_darkness(self, slot: Slot, amount: int = 1) -> None:
         """给某槽位增加黑暗值并触发其 gain_darkness 效果。"""
@@ -383,6 +434,9 @@ class Tarven:
 
     def destroy(self, slot: Slot) -> None:
         if slot.card_type is not None:
+            # 摧毁同样归还构成该实例的原始公共池份数，并清空旧对象来源
+            # （seize 走 destroy 后自然归还；重复 destroy 不会重复归还）。
+            self._return_origin(slot)
             self.slots[slot.index] = Slot(slot.index, self)
 
     # 便捷广播
@@ -441,6 +495,8 @@ class Tarven:
                 n = 2 if "2张" in handler.description else 1
                 for _ in range(n):
                     self.discover(level=[1])
+                # 提前返回路径同样在释放槽位前精确归还原始公共池份数。
+                self._return_origin(trigger_slot)
                 self.slots[trigger_slot.index] = Slot(trigger_slot.index, self)
                 return
 
@@ -453,6 +509,9 @@ class Tarven:
         # 放入包括出售槽在内的最左侧空位，而不是落到更右侧的空位。
         # ``trigger_slot`` 仍保留完整卡牌数据，作为 SellingEvent / sold_slot
         # 的事件载荷，因此出售相关效果仍可读取被出售卡牌的单位和标签。
+        # 释放槽位前先归还实例的真实公共池来源（三连/融合卡会一次性归还
+        # 全部构成份数；``_return_origin`` 清空来源，保证同一实例不重复归还）。
+        self._return_origin(trigger_slot)
         self.slots[trigger_slot.index] = Slot(trigger_slot.index, self)
 
         # 出售卡牌自身的效果需要显式触发：它已不在 self.slots 中，不能再
@@ -575,6 +634,9 @@ class Tarven:
             return False
 
         if isinstance(action, UpgradeTarvenAction):
+            # 已满级（6 本）：拒绝升级，不扣矿、不改任何状态。
+            if self.level >= TARVEN_MAX_LEVEL:
+                return False
             actual_cost = self.hero_controller.level_up_cost(self.level_up_cost)
             if self.mineral < actual_cost:
                 return False
@@ -703,6 +765,9 @@ class Tarven:
             self.card_engine.merge_slots(
                 self.slots[action.left_slot_idx], self.slots[action.right_slot_idx]
             )
+            # 把被三连消耗的第 3 张卡的公共池来源合并进金卡槽：
+            # 场上两份 + 消费第三份 = 3 份原卡，出售/摧毁金卡时一并归还。
+            self.slots[action.left_slot_idx].origin_cards.extend(action.consumed_origin)
             if selected_card is not None:
                 granted = self.grant_reward_card(selected_card)
                 if not granted:  # 合并必然释放一个槽位，仅作不变量保护。
@@ -802,11 +867,21 @@ class Tarven:
         if isinstance(action, BuyAction):
             self.mineral -= self.card_price(action.shop_idx)
             self.shop[action.shop_idx] = None
+            # 商店卡天然来自公共池：记录一份真实来源。
+            placement_origin = (
+                [card] if isinstance(card, Card) and self.pool.is_pool_entity(card) else []
+            )
         else:
+            # 暂存区进场：公共池来源随卡转移（免费静态定义/复制来源为空），
+            # 并清空元数据，避免同一份来源被二次使用。
+            placement_origin = list(self.cache_origin[action.cache_idx] or [])
+            self.cache_origin[action.cache_idx] = None
             self.cache[action.cache_idx] = None
 
         self.slots[slot_idx] = Slot(slot_idx, self)
-        self.card_engine.assign_card_to_slot(card, self.slots[slot_idx])
+        self.card_engine.assign_card_to_slot(
+            card, self.slots[slot_idx], origin=placement_origin
+        )
         self.trigger_entering(self.slots[slot_idx])
         return True
 
@@ -818,21 +893,24 @@ class Tarven:
         if target.card_type is None:
             return False
 
-        # 取出辅助卡（来自暂存区或商店，二选一）
+        # 来源严格二选一（XOR）：cache_idx 与 shop_idx 恰有一个非空，
+        # 两者都有或两者都为空均视为非法动作，直接拒绝。
+        if (action.cache_idx is None) == (action.shop_idx is None):
+            return False
+
+        # 取出辅助卡（来自暂存区或商店）
         if action.cache_idx is not None:
             if not (0 <= action.cache_idx < len(self.cache)):
                 return False
             card = self.cache[action.cache_idx]
             from_cache = True
-        elif action.shop_idx is not None:
+        else:
             if not (0 <= action.shop_idx < len(self.shop)):
                 return False
             card = self.shop[action.shop_idx]
             if card is not None and self.card_price(action.shop_idx) > self.mineral:
                 return False
             from_cache = False
-        else:
-            return False
 
         if card is None:
             return False
@@ -853,7 +931,9 @@ class Tarven:
         # 结算部署效果，然后消耗辅助卡 / 扣费
         self.trigger_deployment(card, target)
         if from_cache:
-            self.cache[action.cache_idx] = None
+            # 部署消耗辅助卡：归还其公共池来源并同步元数据（辅助卡通常为
+            # no_draw，归池自动忽略；真实池实体则精确归还）。
+            self.clear_cache(action.cache_idx)
         else:
             self.mineral -= self.card_price(action.shop_idx)
             self.shop[action.shop_idx] = None
@@ -907,6 +987,7 @@ class Tarven:
         shop_idx=None,
         cache_idx=None,
         price: int = 0,
+        consumed_origin: Optional[List] = None,
     ) -> bool:
         """消费第 3 张卡并生成三连奖励选择（ChooseSynthesisAction）。
 
@@ -915,6 +996,9 @@ class Tarven:
         升级作为奖励候选。飓风的英雄效果会把候选限制为三连卡牌的种族。
         ``from_shop`` 时按 ``price`` 扣矿并清空商店位，``cache_idx`` 非空时清空
         暂存区位；两者都为空（直接进场路径的强制三连）则只消耗传入的卡本身。
+
+        被消耗的第 3 张卡的公共池来源（``consumed_origin``）随动作暂存，结算时
+        合并进金卡槽，保证金卡出售/摧毁时归还全部 3 份原卡。
         """
         cards: List[Union[Card, str]] = []
         reward_level = min(self.level + 1, 6)
@@ -933,13 +1017,35 @@ class Tarven:
         if len(self.slots[locs[0]].upgrades) + len(self.slots[locs[1]].upgrades) <= 4:
             cards.append("聚能器")
 
+        if consumed_origin is None:
+            if from_shop:
+                # 商店卡天然来自公共池：第 3 张来源 = 商店里那份实体。
+                consumed_origin = (
+                    [card]
+                    if isinstance(card, Card) and self.pool.is_pool_entity(card)
+                    else []
+                )
+            elif cache_idx is not None:
+                # 暂存区来源随卡转移并清空元数据（免费静态定义/复制来源为空）。
+                consumed_origin = self.cache_origin[cache_idx] or []
+                self.cache_origin[cache_idx] = None
+            else:
+                # 直接进场路径（enter_card_direct 强制三连）：按传入卡本身判断。
+                consumed_origin = (
+                    [card]
+                    if isinstance(card, Card) and self.pool.is_pool_entity(card)
+                    else []
+                )
+
         if from_shop:
             self.mineral -= price
             self.shop[shop_idx] = None
         elif cache_idx is not None:
             self.cache[cache_idx] = None
 
-        self.force_action.append(ChooseSynthesisAction(locs[0], locs[1], cards))
+        self.force_action.append(
+            ChooseSynthesisAction(locs[0], locs[1], cards, consumed_origin=consumed_origin)
+        )
         return True
 
     def _handle_synthesis(self, action) -> bool:
