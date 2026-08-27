@@ -626,6 +626,13 @@ class HeroController:
         self.state["sold"] = self.state.get("sold", 0) + 1
         self.state["last_sold_level"] = slot.level
 
+    def synthesis_reward_tags(self, slot: "Slot") -> Optional[list[str]]:
+        """返回三连奖励的种族过滤；飓风只发现被三连卡牌的种族。"""
+        if self.hero_name != "飓风":
+            return None
+        race = getattr(slot.source_card, "race", None)
+        return [race] if race in {"terran", "protoss", "zerg", "neutral"} else None
+
     def on_synthesis(self, slot: "Slot") -> None:
         self.state["syntheses"] += 1
         if self.hero_name == "使徒":
@@ -636,10 +643,6 @@ class HeroController:
                 candidate.add_unit("虚空辉光舰(精英)", self.tarven.level)
                 if self.state["syntheses"] == 2:
                     candidate.card_type = "母舰"
-        elif self.hero_name == "飓风":
-            race = getattr(slot.source_card, "race", None)
-            if race in {"terran", "protoss", "zerg", "neutral"}:
-                self.discover(tags=[race], kind="hurricane-synthesis")
 
     # ------------------------------------------------------------------
     # 动作策略

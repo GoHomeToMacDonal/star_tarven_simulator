@@ -918,18 +918,25 @@ def test_pool_owned_unknown_choice_failure_returns_exact_candidates(cards):
     assert action not in tarven.force_action
 
 
-def test_hurricane_synthesis_discovers_same_race(cards):
+def test_hurricane_synthesis_reward_is_same_race(cards):
+    """飓风直接限制标准三连奖励的种族，不再额外生成第二次发现。"""
     tarven = _tarven(cards, "飓风")
     card = next(card for card in cards if card.level == 1 and card.race == "terran")
     _place(tarven, card, 0)
     _place(tarven, card, 1)
     tarven.cache[0] = card
     assert tarven.action(SynthesisAction(cache_idx=0))
+
     synthesis = tarven.force_action[0]
-    synthesis.selected = synthesis.options[0]
+    reward_cards = [option for option in synthesis.options if isinstance(option, Card)]
+    assert len(reward_cards) == 3
+    assert {option.level for option in reward_cards} == {2}
+    assert len({option.name for option in reward_cards}) == 3
+    assert all(option.race == "terran" for option in reward_cards)
+
+    synthesis.selected = reward_cards[0]
     assert tarven.action(synthesis)
-    race_choice = next(action for action in tarven.force_action if isinstance(action, HeroChoiceAction))
-    assert all(option.race == "terran" for option in race_choice.options)
+    assert not any(isinstance(action, HeroChoiceAction) for action in tarven.force_action)
 
 
 def test_hercules_upgrade_to_three_and_five_costs_one_more(cards):

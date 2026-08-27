@@ -910,16 +910,26 @@ class Tarven:
     ) -> bool:
         """消费第 3 张卡并生成三连奖励选择（ChooseSynthesisAction）。
 
-        显式 ``SynthesisAction`` 与"第 3 张卡强制三连"共用此流程：抽 3 张随机
-        卡 + 可能的聚能器升级作为奖励候选；``from_shop`` 时按 ``price`` 扣矿并
-        清空商店位，``cache_idx`` 非空时清空暂存区位，两者都为空（直接进场路径
-        的强制三连）则只消耗传入的卡本身。
+        显式 ``SynthesisAction`` 与"第 3 张卡强制三连"共用此流程：从
+        ``min(当前酒馆等级 + 1, 6)`` 星卡中抽取 3 张不同卡牌，并可能附加聚能器
+        升级作为奖励候选。飓风的英雄效果会把候选限制为三连卡牌的种族。
+        ``from_shop`` 时按 ``price`` 扣矿并清空商店位，``cache_idx`` 非空时清空
+        暂存区位；两者都为空（直接进场路径的强制三连）则只消耗传入的卡本身。
         """
         cards: List[Union[Card, str]] = []
+        reward_level = min(self.level + 1, 6)
+        reward_tags = self.hero_controller.synthesis_reward_tags(self.slots[locs[0]])
+        sampled_uuids: List[int] = []
         for _ in range(3):
-            uuid = self.pool.sample()
-            if uuid is not None:
-                cards.append(self.pool.card_map[uuid])
+            uuid = self.pool.sample(
+                levels=[reward_level],
+                tags=reward_tags,
+                excepts=sampled_uuids,
+            )
+            if uuid is None:
+                break
+            sampled_uuids.append(uuid)
+            cards.append(self.pool.card_map[uuid])
         if len(self.slots[locs[0]].upgrades) + len(self.slots[locs[1]].upgrades) <= 4:
             cards.append("聚能器")
 

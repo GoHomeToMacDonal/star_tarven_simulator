@@ -275,19 +275,40 @@ def test_third_copy_normal_placement_when_levels_differ(cards):
 
 
 def test_explicit_synthesis_still_works(cards):
-    """显式 SynthesisAction（商店来源）回归：行为不变。"""
+    """显式 SynthesisAction 从商店三连，并发现高一星的三张不同卡牌。"""
     t = _tarven(cards)
     cm = _card_map(cards)
     _place(t, cm["好兄弟"], 0)
     _place(t, cm["好兄弟"], 1)
     t.shop[0] = cm["好兄弟"]
     t.mineral = 3
+    t.level = 3
 
     assert t.action(SynthesisAction(shop_idx=0)) is True
     assert len(t.force_action) == 1
     assert isinstance(t.force_action[0], ChooseSynthesisAction)
+    reward_cards = [option for option in t.force_action[0].options if isinstance(option, Card)]
+    assert len(reward_cards) == 3
+    assert {card.level for card in reward_cards} == {4}
+    assert len({card.name for card in reward_cards}) == 3
     assert t.shop[0] is None
     assert t.mineral == 0
+
+
+def test_synthesis_reward_level_caps_at_six(cards):
+    """六本三连仍发现六星卡，不会尝试不存在的七星卡。"""
+    t = _tarven(cards)
+    cm = _card_map(cards)
+    _place(t, cm["好兄弟"], 0)
+    _place(t, cm["好兄弟"], 1)
+    t.cache[0] = cm["好兄弟"]
+    t.level = 6
+
+    assert t.action(SynthesisAction(cache_idx=0)) is True
+    reward_cards = [option for option in t.force_action[0].options if isinstance(option, Card)]
+    assert len(reward_cards) == 3
+    assert {card.level for card in reward_cards} == {6}
+    assert len({card.name for card in reward_cards}) == 3
 
 
 def test_explicit_synthesis_from_cache_still_works(cards):
