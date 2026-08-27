@@ -88,6 +88,14 @@ class CardEngine(AbstractCardEngine):
         self.cards = cards
         self.card_map = {card.name: card for card in cards}
 
+    def __deepcopy__(self, memo) -> "CardEngine":
+        """引擎无可变状态（只持有静态卡牌定义），深拷贝时直接共享自身。
+
+        这样 ``clone_game`` 不会重建 ``card_map``；引擎方法全部只读 ``self``，
+        写操作都作用在传入的 ``slot`` / ``event`` 上。
+        """
+        return self
+
     # ------------------------------------------------------------------
     def assign_card_to_slot(self, card: Union[Card, str], slot: Slot) -> None:
         if card == "虫卵":

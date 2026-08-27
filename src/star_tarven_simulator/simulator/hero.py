@@ -185,7 +185,7 @@ class HeroController:
     ) -> bool:
         options: list[Card] = []
         for _ in range(count):
-            uuid = self.tarven.pool._sample(levels=levels, tags=tags)
+            uuid = self.tarven.pool.sample(levels=levels, tags=tags)
             if uuid is None:
                 break
             options.append(self.tarven.pool.card_map[uuid])
@@ -895,7 +895,7 @@ class HeroController:
             # Draw candidates before payment/destruction so an empty pool is atomic.
             options = []
             for _ in range(3):
-                uuid = t.pool._sample(levels=[level])
+                uuid = t.pool.sample(levels=[level])
                 if uuid is None:
                     break
                 options.append(t.pool.card_map[uuid])
@@ -946,7 +946,7 @@ class HeroController:
                 card = t.pool.card_type_map.get(item) if isinstance(item, str) else item
                 if not isinstance(card, Card) or card.derived or not 1 <= card.level <= 6:
                     continue
-                uuid = t.pool._sample(levels=[card.level])
+                uuid = t.pool.sample(levels=[card.level])
                 if uuid is None:
                     continue
                 replacement = t.pool.card_map[uuid]

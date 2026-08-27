@@ -191,7 +191,7 @@ class Tarven:
         allowed = [r for r in ("terran", "protoss", "zerg", "neutral") if r != excluded]
         cards = []
         for _ in range(count):
-            uuid = self.pool._sample(levels=list(range(1, self.level + 1)), tags=allowed)
+            uuid = self.pool.sample(levels=list(range(1, self.level + 1)), tags=allowed)
             if uuid is None:
                 break
             cards.append(self.pool.card_map[uuid])
@@ -358,9 +358,14 @@ class Tarven:
     # 通用效果
     # ------------------------------------------------------------------
     def discover(self, level=None, tags=None) -> bool:
+        """发现 3 张卡（进入 force_action）。
+
+        :param level: 允许的等级。``None`` 表示不限；接受单个 int 或等级列表。
+        :param tags: 标签白名单，命中任一标签即可。
+        """
         cards = []
         for _ in range(3):
-            uuid = self.pool._sample(levels=level, tags=tags)
+            uuid = self.pool.sample(levels=level, tags=tags)
             if uuid is not None:
                 cards.append(self.pool.card_map[uuid])
         if not cards:
@@ -912,7 +917,7 @@ class Tarven:
         """
         cards: List[Union[Card, str]] = []
         for _ in range(3):
-            uuid = self.pool._sample()
+            uuid = self.pool.sample()
             if uuid is not None:
                 cards.append(self.pool.card_map[uuid])
         if len(self.slots[locs[0]].upgrades) + len(self.slots[locs[1]].upgrades) <= 4:

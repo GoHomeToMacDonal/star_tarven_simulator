@@ -145,6 +145,27 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - 一次性升级直接添加单位；持续战斗 Buff 由 `Slot.equivalent_power()` / `Tarven.total_equivalent_power()` 按伤害、攻速、生命、生存与功能倍率估值。
 - 原有 `price()` / `total_power()` 仍只统计单位基础价值，确保旧 RL 奖励与 checkpoint 协议不变。详细规则见 `docs/upgrade-system.md`。
 
+### 卡池采样与克隆性能（`simulator/card.py`）
+`CardPool` 内部不是"uuid 可重复列表"，改卡池相关代码前先看这里：
+
+- 桶 `_buckets[level]` 存**密集下标**（`_dense`/`_uuids`/`_cards`），并同步维护
+  `_counts[level][dense]`（剩余份数）与标签合格性位串（`bytearray`，按标签组合缓存）。
+- `pool.sample(levels=, tags=, excepts=)` 是公开接口（`_sample` 仅作兼容别名）。
+  `levels` 接受 `None` / int / 任意可迭代。无标签走 O(等级数) 快路径，带标签走
+  O(候选卡种数) 求权重 + 单桶一次定位扫描。
+- **不可破坏的契约**：桶按位置保序、移除用 swap-remove、每次采样只消耗一个
+  `rng.randrange` —— 同一 seed 下抽卡结果与随机数序列必须与历史行为位级一致
+  （RL 侧有 bit-identical 测试）。`tests/test_card_pool.py` 内置旧实现作 oracle 逐步对拍，
+  任何改动都要让它保持通过。
+- 桶内部不对外暴露，用 `bucket_uuids` / `bucket_size` / `total_size` / `set_bucket` /
+  `clear_bucket`；`assert_consistent()` 供测试校验计数表同步。
+- `Card` / `CardPool` / `CardEngine` 定义了 `__deepcopy__`：卡牌定义与引擎运行时只读，
+  克隆整局只复制桶/计数表/RNG（`Card` 因此**必须**保持不可变，改卡请用
+  `dataclasses.replace` 造新对象）。
+- 基准：`uv run python benchmarks/bench_card_pool.py`。当前 vs 优化前：满级刷新
+  `draw(7,6)` 950→12 µs、带标签发现 460→25 µs、`deepcopy(game)` 7.7→0.48 ms，
+  `mud_agent` 带 MC 搜索端到端 1.42→0.22 s/局。
+
 ### 本轮新增/改动的引擎能力
 - `simulator/action.py`：新增 `DeployAction(slot_idx, cache_idx=/shop_idx=)`（定点部署辅助卡）。
 - `simulator/event.py`：新增 `Event.ROUND_WIN` / `RoundWinEvent`、

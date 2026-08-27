@@ -66,7 +66,7 @@ def _upgrade_shop_card(tarven, idx: int, delta: int) -> None:
     if card is None:
         return
     new_level = min(6, card.level + delta)
-    uuid = tarven.pool._sample(levels=[new_level])
+    uuid = tarven.pool.sample(levels=[new_level])
     if uuid is not None:
         tarven.pool.place_back(card)
         tarven.shop[idx] = tarven.pool.card_map[uuid]
@@ -1292,7 +1292,7 @@ def _choose_card_delayed(level):
     def h(slot, event):
         cards = []
         for _ in range(3):
-            uuid = event.tarven.pool._sample(levels=[level])
+            uuid = event.tarven.pool.sample(levels=[level])
             if uuid is not None:
                 cards.append(event.tarven.pool.card_map[uuid])
         if cards:
@@ -1589,7 +1589,7 @@ reg("进场时,吞噬相邻左侧卡牌所有单位,获得这些单位150%的生
 # --- 望梅止渴：进场时,变为星级为 n 的随机卡牌并触发其进场特效 --------------
 def _become_random_and_enter(slot, event):
     lv = event.tarven.level
-    uuid = event.tarven.pool._sample(levels=[lv])
+    uuid = event.tarven.pool.sample(levels=[lv])
     if uuid is None:
         return
     card = event.tarven.pool.card_map[uuid]

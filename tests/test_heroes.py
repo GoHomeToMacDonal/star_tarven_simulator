@@ -91,7 +91,7 @@ def _place(tarven, card: Card, idx: int) -> Slot:
 
 
 def _pool_size(pool: CardPool) -> int:
-    return sum(len(bucket) for bucket in pool.pool)
+    return pool.total_size()
 
 
 def _public_inventory_size(tarven) -> int:
@@ -766,12 +766,12 @@ def test_abathur_validates_discovery_before_destroying_or_paying(cards):
     tarven = _tarven(cards, "阿巴瑟")
     slot = _place(tarven, next(card for card in cards if card.level == 1), 0)
     tarven.mineral = 2
-    saved = list(tarven.pool.pool[2])
-    tarven.pool.pool[2].clear()
+    saved = tarven.pool.bucket_uuids(2)
+    tarven.pool.clear_bucket(2)
     assert not tarven.action(HeroPowerAction(slot_idx=0))
     assert tarven.slots[0] is slot and slot.card_type is not None
     assert tarven.mineral == 2
-    tarven.pool.pool[2][:] = saved
+    tarven.pool.set_bucket(2, saved)
 
 
 def test_starport_transforms_ground_but_never_existing_air(cards):
@@ -853,7 +853,7 @@ def test_firebat_discovers_sequentially_without_temporarily_exhausting_pool(card
     tarven = _tarven(cards, "火蝠")
     _place(tarven, _blank_card("高战力", units={"菲尼克斯": 5}), 0)
     candidate = next(card for card in cards if card.level == 5 and card.uuid not in tarven.pool.no_draw_uuids)
-    tarven.pool.pool[5][:] = [candidate.uuid] * 3
+    tarven.pool.set_bucket(5, [candidate.uuid] * 3)
 
     assert tarven.action(HeroPowerAction())
     assert tarven.hero_controller.state["uses"] == 1
@@ -877,7 +877,7 @@ def test_firebat_full_cache_stops_remaining_chain_and_returns_candidates(cards):
     tarven = _tarven(cards, "火蝠")
     _place(tarven, _blank_card("高战力", units={"菲尼克斯": 5}), 0)
     candidate = next(card for card in cards if card.level == 5 and card.uuid not in tarven.pool.no_draw_uuids)
-    tarven.pool.pool[5][:] = [candidate.uuid] * 3
+    tarven.pool.set_bucket(5, [candidate.uuid] * 3)
     tarven.cache[:-1] = ["占位卡"] * (len(tarven.cache) - 1)
 
     assert tarven.action(HeroPowerAction())
@@ -1112,13 +1112,13 @@ def test_all_47_supported_heroes_have_named_core_behavior_coverage():
 
 def test_generic_discover_with_empty_pool_does_not_enqueue_dead_action(cards):
     tarven = _tarven(cards)
-    saved = [list(bucket) for bucket in tarven.pool.pool]
-    for bucket in tarven.pool.pool:
-        bucket.clear()
+    saved = [tarven.pool.bucket_uuids(level) for level in range(7)]
+    for level in range(7):
+        tarven.pool.clear_bucket(level)
     tarven.discover(level=[6])
     assert tarven.force_action == []
-    for bucket, values in zip(tarven.pool.pool, saved):
-        bucket[:] = values
+    for level, values in enumerate(saved):
+        tarven.pool.set_bucket(level, values)
 
 
 def test_archon_fusion_keeps_right_slot_and_caps_upgrades(cards):
