@@ -1107,9 +1107,15 @@ class HeroController:
                 return False
             return self.choose_static(self._mutation_options(), kind="evolution")
         if h == "星港":
-            if action.unit not in {"怨灵战机", "维京战机", "女妖"}:
+            # 每回合至多一次：设置 air_mode 偏好后记录冷却，避免重复设置同一值
+            # 形成“可无限重复且状态不再变化”的静默 no-op（曾导致贪心/退化策略死循环）。
+            if (
+                action.unit not in {"怨灵战机", "维京战机", "女妖"}
+                or self.state["last_power_round"] == t.round
+            ):
                 return False
             self.state["air_mode"] = action.unit
+            self.state["last_power_round"] = t.round
             return True
         if h == "科学球":
             if (

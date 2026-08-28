@@ -1754,6 +1754,24 @@ def test_starport_banshee_is_air_and_nonhero(cards):
     assert "女妖" not in hero_module.HERO_UNITS
 
 
+def test_starport_power_is_once_per_round(cards):
+    """星港主动技每回合至多一次：设置 air_mode 后同回合再次调用返回 False，
+    避免重复设置同一值形成“可无限重复且状态不再变化”的静默 no-op。"""
+    tarven = _tarven(cards, "星港")
+    assert tarven.action(HeroPowerAction(unit="怨灵战机"))
+    assert tarven.hero_controller.state["last_power_round"] == tarven.round
+    assert tarven.hero_controller.state["air_mode"] == "怨灵战机"
+    # 同回合换另一个单位也应拒绝（一次性）
+    assert not tarven.action(HeroPowerAction(unit="维京战机"))
+    # 下一回合可再用
+    tarven.round_end()
+    tarven.round_start()
+    assert tarven.action(HeroPowerAction(unit="维京战机"))
+    assert tarven.hero_controller.state["air_mode"] == "维京战机"
+    # 非法单位名恒拒绝
+    assert not tarven.action(HeroPowerAction(unit="不存在的单位"))
+
+
 def test_real_card_unit_classifications_cover_hero_contract_examples(cards):
     assert {"歌利亚", "原始穿刺者", "塔里斯", "拟态雏虫", "驯养雷兽"} <= set(hero_module.GROUND_UNITS)
     assert "原始守卫" in hero_module.AIR_UNITS
