@@ -1018,7 +1018,11 @@ def test_stalker_adept_and_reaper_purchase_rules(cards):
 def test_nova_mutalisk_and_rattlesnake_discovery_triggers(cards):
     nova = _tarven(cards, "诺娃")
     nova.round_start()
-    assert any(action.kind == "nova" for action in nova.force_action)
+    nova_action = next(a for a in nova.force_action if a.kind == "nova")
+    assert nova_action is not None
+    # 候选仅来自 7 张可发现辅助卡；冷钱包 / 矿簇为专属获得，不进入通用发现
+    assert {c.name for c in nova_action.options} <= set(hero_module.AUXILIARY_CARD_NAMES)
+    assert {"冷钱包", "矿簇"}.isdisjoint(c.name for c in nova_action.options)
 
     mutalisk = _tarven(cards, "异龙")
     mutalisk.level = 3

@@ -24,6 +24,7 @@ from star_tarven_simulator.constants.tarven import (
 )
 from star_tarven_simulator.loader import build_game, load_cards
 from star_tarven_simulator.simulator.action import (
+    ChooseCardAction,
     ChooseSynthesisAction,
     ChooseUpgradeAction,
     DeployAction,
@@ -56,6 +57,7 @@ from star_tarven_simulator.simulator.event import (
     UpgradeEvent,
 )
 from star_tarven_simulator.simulator.game import Game, Tarven
+from star_tarven_simulator.simulator.hero import AUXILIARY_CARD_NAMES
 from star_tarven_simulator.simulator.slot import Slot
 
 
@@ -689,6 +691,21 @@ def test_deploy_requires_exactly_one_source(cards):
     assert tarven.shop[0] is None
     assert tarven.cache[0] is aux
     assert tarven.mineral == 5 - price + 1
+
+
+def test_endless_swarm_discovers_auxiliary_cards(cards):
+    """无尽虫群进场时发现一张辅助卡：候选来自 7 张可发现辅助卡，不含专属获得的两张。"""
+    tarven = _fresh_tarven(cards)
+    card_map = {c.name: c for c in cards}
+    slot = _place(tarven, card_map["无尽虫群"], 0)
+    tarven.trigger_entering(slot)
+
+    assert len(tarven.force_action) == 1
+    fa = tarven.force_action[0]
+    assert isinstance(fa, ChooseCardAction)
+    assert len(fa.cards) == 3
+    assert {c.name for c in fa.cards} <= set(AUXILIARY_CARD_NAMES)
+    assert {"冷钱包", "矿簇"}.isdisjoint(c.name for c in fa.cards)
 
 
 def test_larva_full_field_without_egg_keeps_last_larva_unit(cards):

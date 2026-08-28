@@ -26,6 +26,7 @@ from star_tarven_simulator.simulator.event_handler import (
     TaskActionHandler,
 )
 from star_tarven_simulator.simulator.slot import Slot
+from star_tarven_simulator.simulator.hero import AUXILIARY_CARD_NAMES
 
 
 def reg(desc, event, fn):
@@ -347,7 +348,10 @@ reg("集群(7):获得轨道空降升级", "round_end", _swarm_gain_upgrade(7, "�
 
 
 def _discover_aux(slot, event):
-    event.tarven.discover(tags=["辅助卡"])
+    t = event.tarven
+    cards = [t.pool.card_type_map[n] for n in AUXILIARY_CARD_NAMES if n in t.pool.card_type_map]
+    if cards:
+        t.force_action.append(ChooseCardAction(cards=t.rng.sample(cards, min(3, len(cards)))))
 
 
 reg("进场时,发现一张辅助卡", "entering", _discover_aux)

@@ -45,10 +45,12 @@ TRANSFORM_ONLY_HEROES = frozenset(
 )
 SELECTABLE_HEROES = frozenset({"default"}) | SUPPORTED_HEROES
 
-# 数据缺失时仍可安全生成的固定专属卡/研究定义。
+# 可被"发现辅助卡"（诺娃 / 无尽虫群）发现的辅助卡集合。
+# 冷钱包 / 矿簇 同属辅助卡，但只能经专属效果获得（先锋概念 / 灵能），
+# 不出现在通用"发现辅助卡"的候选里。
 AUXILIARY_CARD_NAMES = (
     "私人团队", "尖端科技", "星灵科技", "生化实验室", "秽暗饵食",
-    "超负荷", "隐秘行动", "冷钱包", "矿簇",
+    "超负荷", "隐秘行动",
 )
 ZERG_RESEARCH_UPGRADES = ("几丁质甲壳", "代谢加速", "肾上腺", "强化甲壳")
 HANSEN_STUDIES = (
