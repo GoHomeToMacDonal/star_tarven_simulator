@@ -62,18 +62,32 @@ def feed(slot: Slot, event, unit_type: str, price: int) -> None:
         right.add_unit("精华", essence)
 
 
-def sheath_hatch(tarven) -> None:
-    """卵鞘词条：被出售时，注卵价值较高的 n 个非英雄生物（n = 酒馆等级）。
+def sheath_hatch(slot: Slot, tarven) -> None:
+    """卵鞘词条：被出售时，注卵卡牌内单位价值最高的 min(n, m) 个非英雄生物单位。
 
-    从单位价格表中选出价值最高的 ``n`` 个非英雄生物单位，各注卵 1 个（生成/注入
-    虫卵）。确定性排序：价值降序，价值相同时按名称升序。
+    ``n`` = 酒馆等级；``m`` = 该卡牌内非英雄生物单位的个数（含重复份数）。
+    单位按 ``UNIT_PRICES``（单位价值）降序选取；同单位价值随机选一个
+    （先洗牌、再稳定降序，稳定排序保留洗牌顺序以打破平局）。
     """
     n = tarven.level
-    candidates = [
-        u for u in UNIT_PRICES
-        if u in BIOLOGICAL_UNITS and u not in HERO_UNITS
-    ]
-    candidates.sort(key=lambda u: (-UNIT_PRICES[u], u))
-    payload = {u: 1 for u in candidates[:n]}
+
+    # 展开为「每个单位」的列表（含重复份数）
+    individuals = []
+    for unit, cnt in slot.units.items():
+        if unit in BIOLOGICAL_UNITS and unit not in HERO_UNITS:
+            individuals.extend([unit] * cnt)
+
+    if not individuals:
+        return
+
+    k = min(n, len(individuals))
+
+    # 同单位价值随机：先洗牌，再按单位价值稳定降序（稳定排序保留洗牌顺序打破平局）
+    tarven.rng.shuffle(individuals)
+    individuals.sort(key=lambda u: -UNIT_PRICES.get(u, 0.0))
+
+    payload: Dict[str, int] = {}
+    for u in individuals[:k]:
+        payload[u] = payload.get(u, 0) + 1
     if payload:
         tarven.larva(payload)

@@ -529,11 +529,11 @@ class Tarven:
         # 依赖下面的全场遍历发现。
         trigger_slot.trigger([SellingEvent(self, trigger_slot)])
 
-        # 卵鞘词条：被出售时，注卵价值较高的 n 个非英雄生物（n = 酒馆等级）。
+        # 卵鞘词条：被出售时，注卵卡牌内单位价值最高的 min(n, m) 个非英雄生物单位。
         if trigger_slot.tags.has("拥有卵鞘"):
             from star_tarven_simulator.cards.mechanics import sheath_hatch
 
-            sheath_hatch(self)
+            sheath_hatch(trigger_slot, self)
 
         # 折跃援军：按升级数据传播到随机合法神族卡，并复制出售卡的生物单位。
         # 没有合法目标时不消耗瓦斯。

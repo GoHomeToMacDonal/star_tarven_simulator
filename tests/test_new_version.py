@@ -46,11 +46,11 @@ def _egg(tarven: Tarven) -> Slot | None:
 
 
 # ---------------------------------------------------------------------------
-# 卵鞘：出售时注卵价值较高的 n 个非英雄生物
+# 卵鞘：出售时注卵卡牌内单位价值最高的 min(n, m) 个非英雄生物
 # ---------------------------------------------------------------------------
 def test_sheath_hatch_on_sell_level1(cards):
     tarven = _fresh_tarven(cards)
-    roach = _by_name(cards, "蟑螂小队")
+    roach = _by_name(cards, "蟑螂小队")  # 3 蟑螂(100) + 1 爆虫(65)
     slot = _place(tarven, roach, 0)
     assert slot.tags.has("拥有卵鞘")
 
@@ -58,23 +58,51 @@ def test_sheath_hatch_on_sell_level1(cards):
 
     egg = _egg(tarven)
     assert egg is not None
-    # n = 酒馆等级 = 1 → 价值最高的非英雄生物
-    assert egg.units == {"混合体实验体": 1}
+    # n=1 → 单位价值最高的 1 个非英雄生物：蟑螂(100) > 爆虫(65)
+    assert egg.units == {"蟑螂": 1}
 
 
 def test_sheath_hatch_scales_with_level(cards):
     tarven = _fresh_tarven(cards)
     tarven.level = 3
-    giant = _by_name(cards, "凶残巨兽")
-    slot = _place(tarven, giant, 0)
-    assert slot.tags.has("拥有卵鞘")
+    roach = _by_name(cards, "蟑螂小队")  # 3 蟑螂 + 1 爆虫
+    slot = _place(tarven, roach, 0)
 
     tarven.trigger_selling(slot)
 
     egg = _egg(tarven)
     assert egg is not None
-    # n = 3 → 价值最高的 3 个非英雄生物，各 1 个
-    assert egg.units == {"混合体实验体": 1, "混合体支配者": 1, "莽兽": 1}
+    # min(3, 4)=3 → 价值最高的 3 个 = 3 蟑螂
+    assert egg.units == {"蟑螂": 3}
+
+
+def test_sheath_hatch_caps_at_m(cards):
+    tarven = _fresh_tarven(cards)
+    tarven.level = 6
+    roach = _by_name(cards, "蟑螂小队")  # 3 蟑螂 + 1 爆虫
+    slot = _place(tarven, roach, 0)
+
+    tarven.trigger_selling(slot)
+
+    egg = _egg(tarven)
+    assert egg is not None
+    # min(6, 4)=4 → 全部 4 个非英雄生物单位
+    assert egg.units == {"蟑螂": 3, "爆虫": 1}
+
+
+def test_sheath_hatch_tie_break(cards):
+    tarven = _fresh_tarven(cards)
+    tarven.level = 2
+    dragon = _by_name(cards, "腐化大龙")  # 4 守卫(250) + 4 腐化者(250)
+    slot = _place(tarven, dragon, 0)
+
+    tarven.trigger_selling(slot)
+
+    egg = _egg(tarven)
+    assert egg is not None
+    # 同单位价值(250)随机选；min(2, 8)=2 个单位，且只可能是守卫/腐化者
+    assert sum(egg.units.values()) == 2
+    assert set(egg.units) <= {"守卫", "腐化者"}
 
 
 # ---------------------------------------------------------------------------
