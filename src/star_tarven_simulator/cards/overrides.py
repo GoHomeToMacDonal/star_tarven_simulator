@@ -1123,9 +1123,10 @@ reg("进场时,相邻左侧卡牌获得虚空投影增益", "entering", _left_vo
 
 def _void_projection_gain(n):
     def h(slot, event):
+        eff = event.tarven.void_projection_efficiency
         for s in slot.all:
             if s.tags.has(_VOID_PROJECTION_TAG):
-                s.add_unit("混合体天罚者", n)
+                s.add_unit("混合体天罚者", int(n * eff))
     return h
 
 
@@ -1590,7 +1591,9 @@ reg("唯一:每进场一张六星以下的非虫族卡牌,注卵进场卡牌的�
 def _kerrigan_merge(slot, event):
     for other in slot.neighbors:
         if other.card_type == "凯瑞甘":
-            _transform(other, event, "刀锋女王", reset_units=True)
+            # 刀锋女王不在静态卡池，直接改身份（保留凯瑞甘的单位），
+            # 其「降低虚空投影效率」由 Tarven.void_projection_efficiency 读取。
+            other.card_type = "刀锋女王"
             event.tarven.destroy(slot)
             return
 

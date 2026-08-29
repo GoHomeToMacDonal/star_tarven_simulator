@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Callable, Dict, List, Optional, Tuple
 
-from star_tarven_simulator.cards.mechanics import feed, hatch, teleport
+from star_tarven_simulator.cards.mechanics import SHEATH_TAG, feed, hatch, teleport
 from star_tarven_simulator.parsing.text import (
     extract_units,
     is_unit_known,
@@ -148,6 +148,13 @@ def simple_body_handler(body: str, times_scaled: bool = False) -> Optional[Calla
     ``times_scaled=True`` 时（集结），数量乘以 ``times``，handler 签名为 ``(slot, event, times)``。
     无法识别为纯单位列表时返回 ``None``（交给注册表兜底）。
     """
+    # 获得卵鞘：关键词授予（给本卡添加「拥有卵鞘」词条），不产生单位。
+    if body.strip() == "获得卵鞘":
+        def handler(slot, event):
+            slot.tags.add(SHEATH_TAG)
+
+        return handler
+
     m = _SIMPLE_BODY_RE.match(body)
     if not m:
         return None

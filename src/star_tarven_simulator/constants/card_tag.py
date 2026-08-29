@@ -32,6 +32,8 @@ CARD_TAGS = [
     "非虫族",
     "生物",
     "属于UED",
+    # 新版 v20260822（change_log 0826）：卵鞘词条
+    "拥有卵鞘",
 ]
 
 CARD_PACKAGES = {

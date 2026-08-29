@@ -278,6 +278,17 @@ class Tarven:
     def psi_level_max(self) -> int:
         return max((slot.psi_level for slot in self.slots), default=0)
 
+    @property
+    def void_projection_efficiency(self) -> float:
+        """虚空投影效率：刀锋女王在场时降低 100%（完全抵消虚空投影增益）。
+
+        对应 change_log 0826「刀锋女王：降低虚空投影效率由50%增至100%」。
+        刀锋女王由两张凯瑞甘相邻合并产生（见 overrides._kerrigan_merge）。
+        """
+        if any(s.card_type == "刀锋女王" for s in self.slots):
+            return 0.0
+        return 1.0
+
     def total_power(self) -> float:
         """场上原始单位价值；干扰者额外计入暂存区非衍生静态卡价值。"""
         total = sum(slot.price() for slot in self.slots)
@@ -517,6 +528,12 @@ class Tarven:
         # 出售卡牌自身的效果需要显式触发：它已不在 self.slots 中，不能再
         # 依赖下面的全场遍历发现。
         trigger_slot.trigger([SellingEvent(self, trigger_slot)])
+
+        # 卵鞘词条：被出售时，注卵价值较高的 n 个非英雄生物（n = 酒馆等级）。
+        if trigger_slot.tags.has("拥有卵鞘"):
+            from star_tarven_simulator.cards.mechanics import sheath_hatch
+
+            sheath_hatch(self)
 
         # 折跃援军：按升级数据传播到随机合法神族卡，并复制出售卡的生物单位。
         # 没有合法目标时不消耗瓦斯。

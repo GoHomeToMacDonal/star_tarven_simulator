@@ -1,4 +1,4 @@
-"""数据加载：读取 v260822 卡牌 JSON、解析效果、构建引擎，并给出覆盖率报告。"""
+"""数据加载：读取 v20260822 卡牌 JSON、解析效果、构建引擎，并给出覆盖率报告。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from star_tarven_simulator.simulator.card_engine import CardEngine
 from star_tarven_simulator.simulator.game import Game
 
 DEFAULT_DATA_PATH = (
-    Path(__file__).resolve().parents[2] / "data" / "v260822_card.json"
+    Path(__file__).resolve().parents[2] / "data" / "v20260826_card.json"
 )
 
 

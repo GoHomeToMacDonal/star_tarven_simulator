@@ -54,6 +54,7 @@ UNIT_PRICES["自动机炮"] = 200.0
 UNIT_PRICES["原始刺蛇"] = 150.0
 UNIT_PRICES["狂热者"] = 100.0
 UNIT_PRICES["寡妇雷"] = 100.0
+UNIT_PRICES["巨型寡妇雷"] = 300.0
 UNIT_PRICES["虫后"] = 175.0
 UNIT_PRICES["飓风"] = 250.0
 UNIT_PRICES["雷兽"] = 500.0
