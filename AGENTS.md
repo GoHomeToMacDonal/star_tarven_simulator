@@ -165,6 +165,11 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - 基准：`uv run python benchmarks/bench_card_pool.py`。当前 vs 优化前：满级刷新
   `draw(7,6)` 950→12 µs、带标签发现 460→25 µs、`deepcopy(game)` 7.7→0.48 ms，
   `mud_agent` 带 MC 搜索端到端 1.42→0.22 s/局。
+- **极低概率卡牌权重**：描述文本含 `"极低概率"`（被动标签"作为极低概率出现的卡牌"或
+  风味"极低概率特典卡"）的卡，初始份数 = `CARD_POOL_NUMBER[level]`，普通同等级卡 =
+  `CARD_POOL_NUMBER[level] * LOW_PROBABILITY_SCALE`（`LOW_PROBABILITY_SCALE=10`），
+  即极低概率卡恰好是普通卡的 1/10。判定与份数见 `card_copies()` / `is_low_probability_card()`，
+  当前命中 7 张卡（全部 6 星，含斯旺舰队）。
 
 ### 本轮新增/改动的引擎能力
 - `simulator/action.py`：新增 `DeployAction(slot_idx, cache_idx=/shop_idx=)`（定点部署辅助卡）。

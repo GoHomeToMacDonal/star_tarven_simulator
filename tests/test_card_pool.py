@@ -21,7 +21,14 @@ import pytest
 
 from star_tarven_simulator.expansions import BASE_EXTRA_SOURCES
 from star_tarven_simulator.loader import load_cards
-from star_tarven_simulator.simulator.card import CARD_POOL_NUMBER, Card, CardPool
+from star_tarven_simulator.simulator.card import (
+    CARD_POOL_NUMBER,
+    LOW_PROBABILITY_SCALE,
+    Card,
+    CardPool,
+    card_copies,
+    is_low_probability_card,
+)
 
 
 # ----------------------------------------------------------------------
@@ -47,7 +54,7 @@ class LegacyPool:
             if card.uuid in self.no_draw_uuids:
                 continue
             if 1 <= card.level <= 6:
-                self.pool[card.level] += [card.uuid] * CARD_POOL_NUMBER[card.level]
+                self.pool[card.level] += [card.uuid] * card_copies(card)
 
     def draw(self, count: int, max_level: int) -> List[Card]:
         cards: List[Card] = []
@@ -317,6 +324,43 @@ def test_no_draw_cards_never_enter_buckets(cards, no_draw):
         real.place_back(real.card_map[uuid])
         assert real.take(real.card_map[uuid]) is None
     assert total_size(real) == before
+
+
+def test_low_probability_card_detection(cards):
+    """``is_low_probability_card`` 恰好命中 7 张"极低概率出现"卡，且均为 6 星。"""
+    low = [c for c in cards if is_low_probability_card(c)]
+    assert {c.name for c in low} == {
+        "牛牛冲鸭",
+        "cloudplayer",
+        "我叫小明",
+        "归天的加多宝",
+        "酒馆后勤处",
+        "入景随风",
+        "斯旺舰队",
+    }
+    assert all(c.level == 6 for c in low)
+
+
+def test_low_probability_cards_have_tenth_copies(cards, no_draw):
+    """极低概率卡的初始份数为同等级普通卡的 1/10（6 星：6 份 vs 60 份）。"""
+    real = CardPool(cards, no_draw_uuids=no_draw, rng=random.Random(0))
+
+    low6 = [c for c in cards if is_low_probability_card(c) and c.uuid not in no_draw]
+    normal6 = [
+        c
+        for c in cards
+        if c.level == 6 and not is_low_probability_card(c) and c.uuid not in no_draw
+    ]
+    assert low6 and normal6
+
+    for c in low6:
+        assert c.level == 6
+        assert real.count(c) == CARD_POOL_NUMBER[6]
+    for c in normal6:
+        assert real.count(c) == CARD_POOL_NUMBER[6] * LOW_PROBABILITY_SCALE
+
+    # 比例恰好 1/10
+    assert CARD_POOL_NUMBER[6] * LOW_PROBABILITY_SCALE == LOW_PROBABILITY_SCALE * real.count(low6[0])
 
 
 def test_place_back_beyond_initial_capacity(cards, no_draw):

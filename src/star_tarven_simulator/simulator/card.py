@@ -46,8 +46,32 @@ from star_tarven_simulator.constants.unit_prices import UNIT_PRICES
 # 游戏中可用的种族列表
 RACES = ["protoss", "terran", "zerg", "neutral"]
 
-# 每个等级卡池中每种卡牌的份数
+# 每个等级卡池中每种卡牌的基础份数（实际份数由 card_copies 派生）
 CARD_POOL_NUMBER = {1: 18, 2: 15, 3: 13, 4: 11, 5: 9, 6: 6}
+
+# "极低概率"同时命中被动标签"作为极低概率出现的卡牌"与风味"…极低概率特典卡"。
+LOW_PROBABILITY_MARKER = "极低概率"
+
+# 极低概率卡牌的同等级权重 = 普通卡牌的 1/LOW_PROBABILITY_SCALE。
+LOW_PROBABILITY_SCALE = 10
+
+
+def is_low_probability_card(card: Card) -> bool:
+    """该卡是否为"极低概率出现"卡牌（普通/金色描述文本任一含标记）。"""
+    return any(
+        LOW_PROBABILITY_MARKER in desc
+        for desc in (*card.description, *card.gold_description)
+    )
+
+
+def card_copies(card: Card) -> int:
+    """该卡在卡池中的初始份数。
+
+    普通卡牌 = ``CARD_POOL_NUMBER[level] * LOW_PROBABILITY_SCALE``；
+    极低概率卡牌 = ``CARD_POOL_NUMBER[level]``（即普通卡的 1/10，整数比例精确成立）。
+    """
+    base = CARD_POOL_NUMBER[card.level]
+    return base if is_low_probability_card(card) else base * LOW_PROBABILITY_SCALE
 
 
 class Tags:
@@ -292,7 +316,7 @@ class CardPool:
                 continue
             if 1 <= card.level <= 6:
                 dense = self._dense[card.uuid]
-                number = CARD_POOL_NUMBER[card.level]
+                number = card_copies(card)
                 self._buckets[card.level] += [dense] * number
                 self._counts[card.level][dense] += number
 
