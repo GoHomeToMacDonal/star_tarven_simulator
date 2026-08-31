@@ -118,16 +118,17 @@ class Slot:
         return [s for s in self.all if s.tags.has("neutral")]
 
     @property
-    def teleport(self) -> "Slot":
-        """折跃落点。
+    def teleport(self) -> Optional["Slot"]:
+        """返回指定的折跃目标；没有指定目标时返回 ``None``。
 
-        若全场存在带 :data:`TELEPORT_TARGET_TAG` 标签的槽位，则折跃到该槽；
-        否则折跃到自身。（旧版此处为未实现的 ``None`` 占位。）
+        指定目标由 :data:`TELEPORT_TARGET_TAG` 标签标记；若异常地存在多个，
+        使用槽位序号最小的目标。无指定目标时的随机神族落点由折跃原语逐个单位
+        选择（见 :func:`cards.mechanics.teleport`）。
         """
         for s in self.all:
             if s.tags.has(TELEPORT_TARGET_TAG):
                 return s
-        return self
+        return None
 
     # ------------------------------------------------------------------
     # 派生量

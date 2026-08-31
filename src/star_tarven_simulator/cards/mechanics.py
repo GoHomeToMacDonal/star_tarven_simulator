@@ -20,14 +20,26 @@ SHEATH_TAG = "拥有卵鞘"
 
 
 def teleport(slot: Slot, event, units: Dict[str, int]) -> None:
-    """把单位折跃到折跃落点（见 :attr:`Slot.teleport`），并广播折跃事件。"""
-    target = slot.teleport
-    total = 0
+    """逐个单位选择折跃落点，并在至少一个单位成功加入后只广播一次事件。
+
+    存在指定折跃目标（见 :attr:`Slot.teleport`）时，所有单位进入该目标；
+    否则每个单位独立、带放回地随机选择一张场上的神族卡牌——因此折跃多个单位
+    会执行多次随机选择，可能落到不同卡牌，也可能重复落到同一卡牌。场上没有
+    合法神族落点时不添加任何单位、也不广播事件。
+    """
+    fixed_target = slot.teleport
+    candidates = slot.protoss if fixed_target is None else []
+    if fixed_target is None and not candidates:
+        return
+
+    teleported = 0
     for unit, cnt in units.items():
-        if cnt > 0:
-            target.add_unit(unit, cnt)
-            total += cnt
-    if total > 0:
+        for _ in range(max(0, cnt)):
+            target = fixed_target or event.tarven.rng.choice(candidates)
+            before = target.unit_count
+            target.add_unit(unit, 1)
+            teleported += target.unit_count - before
+    if teleported > 0:
         event.tarven.trigger_any_card_event(AnyCardTeleportEvent(event.tarven, slot))
 
 

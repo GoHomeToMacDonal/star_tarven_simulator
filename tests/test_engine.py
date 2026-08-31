@@ -852,6 +852,111 @@ def test_registry_rejects_duplicate_keys():
     assert key not in ACTION_HANDLERS
 
 
+def _make_protoss_slot(tarven, idx, name):
+    """在 idx 处放一张带 protoss tag 的空壳卡槽（仅用于折跃落点测试）。"""
+    slot = Slot(idx, tarven)
+    slot.card_type = name
+    slot.level = 1
+    slot.tags.add("protoss")
+    tarven.slots[idx] = slot
+    return slot
+
+
+def test_teleport_goes_to_tagged_target(cards):
+    """有指定折跃目标时，所有折跃单位都集中到该目标。"""
+    from star_tarven_simulator.cards.mechanics import teleport
+    from star_tarven_simulator.simulator.slot import TELEPORT_TARGET_TAG
+
+    tarven = _fresh_tarven(cards)
+    source = _make_protoss_slot(tarven, 0, "折跃源")
+    target = _make_protoss_slot(tarven, 2, "折跃目标")
+    _make_protoss_slot(tarven, 4, "其它神族")
+    target.tags.add(TELEPORT_TARGET_TAG)
+
+    teleport(source, RoundEndEvent(tarven), {"追猎者": 3})
+
+    assert target.count("追猎者") == 3
+    assert source.count("追猎者") == 0
+    assert tarven.slots[4].count("追猎者") == 0
+
+
+def test_teleport_random_is_per_unit_with_replacement(cards):
+    """无指定目标时，折跃 N 个单位执行 N 次带放回随机选择。"""
+    from star_tarven_simulator.cards.mechanics import teleport
+
+    tarven = _fresh_tarven(cards)
+    source = _make_protoss_slot(tarven, 0, "折跃源")
+    a = _make_protoss_slot(tarven, 2, "神族A")
+    b = _make_protoss_slot(tarven, 4, "神族B")
+
+    calls = []
+    real_choice = tarven.rng.choice
+
+    def spy_choice(seq):
+        calls.append(list(seq))
+        return seq[0]  # 每次都选第一张，验证“可重复落到同一卡牌”
+
+    tarven.rng.choice = spy_choice
+    try:
+        teleport(source, RoundEndEvent(tarven), {"追猎者": 2})
+    finally:
+        tarven.rng.choice = real_choice
+
+    # 折跃 2 个单位 -> 恰好 2 次独立随机选择
+    assert len(calls) == 2
+    # 每次都在同一候选集合（场上全部神族卡，含来源自身）里选择
+    expected = {id(source), id(a), id(b)}
+    assert all(set(id(s) for s in c) == expected for c in calls)
+    # spy 每次都返回候选列表第一张，验证同一目标可被重复选中（带放回）
+    first = calls[0][0]
+    assert first.count("追猎者") == 2
+
+
+def test_teleport_no_protoss_target_does_nothing(cards):
+    """场上没有神族卡时，折跃不产生单位、也不广播事件。"""
+    from star_tarven_simulator.cards.mechanics import teleport
+
+    tarven = _fresh_tarven(cards)
+    source = Slot(0, tarven)  # 非神族来源
+    source.card_type = "非神族"
+    source.level = 1
+    tarven.slots[0] = source
+
+    broadcast = []
+    real = tarven.trigger_any_card_event
+    tarven.trigger_any_card_event = lambda e: broadcast.append(e)
+    try:
+        teleport(source, RoundEndEvent(tarven), {"追猎者": 3})
+    finally:
+        tarven.trigger_any_card_event = real
+
+    assert source.count("追猎者") == 0
+    assert broadcast == []
+
+
+def test_teleport_broadcasts_once(cards):
+    """一次折跃即使添加多个单位也只广播一次 any_card_teleport。"""
+    from star_tarven_simulator.cards.mechanics import teleport
+
+    tarven = _fresh_tarven(cards)
+    source = _make_protoss_slot(tarven, 0, "折跃源")
+    _make_protoss_slot(tarven, 2, "神族A")
+
+    events = []
+    real = tarven.trigger_any_card_event
+    tarven.trigger_any_card_event = lambda e: events.append(e)
+    try:
+        teleport(source, RoundEndEvent(tarven), {"追猎者": 2, "狂热者": 1})
+    finally:
+        tarven.trigger_any_card_event = real
+
+    teleport_events = [
+        e for e in events if isinstance(e, AnyCardTeleportEvent)
+    ]
+    assert len(teleport_events) == 1
+    assert teleport_events[0].source is source
+
+
 if __name__ == "__main__":
     import sys
 
