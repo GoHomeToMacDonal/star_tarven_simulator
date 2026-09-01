@@ -41,10 +41,16 @@ ACTION_HANDLERS["快速生产:获得4陆战队员"] = ("quick_produce", action_h
 ```python
 slot.add_unit(unit, cnt)                     # 加单位（受 200 总量上限约束）
 slot.remove_unit(unit, cnt)
-slot.replace_unit(u, max_cnt, new_u, new_cnt)      # 数量≥max_cnt 时整组替换一次
+slot.replace_unit(u, max_cnt, new_u, new_cnt)      # 成组兑换：数量≥max_cnt 时整组替换一次
+slot.replace_upto(u, max_cnt, new_u)               # 「最多 N 个」：1:1 转化 min(现有, max_cnt)，返回实际数量
 slot.replace_all_units(u, old_cnt, new_u, new_cnt) # 按 old_cnt 为单位成组替换全部
 slot.count(unit)                             # 该单位数量
 ```
+
+> **精英化 / 变形类效果一律用 `replace_upto`。** 「将5陆战队员精英化」的语义是
+> **最多 5 个**：场上只有 3 个时要精英化 3 个，而不是一个都不转化。`replace_unit`
+> 是"凑不满一组就不发生"的成组兑换（如「3陆战队员换1牛头人陆战队员」），
+> 用错会让效果在兵源不足时整回合空转。
 
 **位置/集合（property）**
 ```python

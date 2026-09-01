@@ -185,11 +185,12 @@ reg("每回合结束时,场上每有1科技挂件,精英化场上1攻城坦克�
 
 
 def _elite_marine_marauder(n):
+    """泰凯斯：每张人族卡牌将「最多 n 个」陆战队员和劫掠者精英化。"""
     def h(slot, event):
         for s in slot.all:
             if s.tags.has("terran"):
-                s.replace_unit("陆战队员", n, "陆战队员(精英)", n)
-                s.replace_unit("劫掠者", n, "劫掠者(精英)", n)
+                s.replace_upto("陆战队员", n, "陆战队员(精英)")
+                s.replace_upto("劫掠者", n, "劫掠者(精英)")
     return h
 
 
@@ -198,10 +199,10 @@ reg("每回合结束时,每张人族卡牌将5陆战队员和5劫掠者精英化
 
 
 def _elite_marine_to_shield(n):
+    """沃菲尔德：每张卡牌将「最多 n 个」陆战队员(精英)变为帝盾卫兵。"""
     def h(slot, event):
         for s in slot.all:
-            for _ in range(n):
-                s.replace_unit("陆战队员(精英)", 1, "帝盾卫兵", 1)
+            s.replace_upto("陆战队员(精英)", n, "帝盾卫兵")
     return h
 
 
@@ -210,10 +211,11 @@ reg("每回合结束时,每张卡牌将2陆战队员(精英)变为帝盾卫兵",
 
 
 def _quick_elite_goliath_viking(n):
+    """尖端科技：相邻两侧卡牌将「最多 n 个」歌利亚和维京战机精英化。"""
     def h(slot, event):
         for s in slot.neighbors:
-            s.replace_unit("歌利亚", n, "歌利亚(精英)", n)
-            s.replace_unit("维京战机", n, "维京战机(精英)", n)
+            s.replace_upto("歌利亚", n, "歌利亚(精英)")
+            s.replace_upto("维京战机", n, "维京战机(精英)")
     return h
 
 

@@ -182,6 +182,26 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - `cards/overrides.py`：新增 `_transform(slot,event,card_name,reset_units=)` 自定义变身原语
   （难民营地/刀锋女王/望梅止渴随机卡牌），以及 `_upgrade_shop_card` 商店提星原语。
 
+### 精英化语义：`replace_upto`（不是 `replace_unit`）
+`Slot.replace_upto(unit, max_cnt, new_unit) -> int` 是**「最多 N 个」**的 1:1 转化，
+转化 `min(现有, max_cnt)` 个并返回实际数量。精英化 / 变形类效果必须用它：
+「将5陆战队员精英化」在场上只有 3 个时要精英化 3 个。
+
+`replace_unit(u, max_cnt, new_u, new_cnt)` 保留原语义（**成组兑换**，凑不满一组则不发生，
+如「3陆战队员换1牛头人陆战队员」），不要用于精英化——曾导致泰凯斯/尖端科技在兵源
+不足时整回合空转（供兵 4/回合 < 精英化 5/回合 时周期性完全不触发）。已改用
+`replace_upto` 的 handler：`_elite_marine_marauder`（泰凯斯）、`_elite_marine_to_shield`
+（沃菲尔德）、`_quick_elite_goliath_viking`（尖端科技）。
+`_elite_entered_protoss` / `_elite_tank_wolf` 本来就是逐个 1:1，语义已正确。
+
+### 已知数据缺口
+- `步兵连队`（uuid 23）的 `units` 原本缺 `反应堆`，是全数据里唯一"有『反应堆生产』
+  描述却无反应堆单位"的卡，导致步坦协同（判定 `count("反应堆") > 0`）喂不到它。
+  已在 `data/v20260826_card.json` 补 `"反应堆": 1`（旧快照 `v20260822_card.json` 未改）。
+- `UNIT_PRICES` 缺 `劫掠者(精英)` / `攻城坦克(精英)` / `黑暗圣堂武士(精英)` /
+  `风暴战舰(精英)` / `跳虫(精英)`，`Slot.price()` 按 0 计 —— 精英化这些单位会**倒扣**战力。
+  这几项未收录在 `docs/missing-unit-prices.txt` 的 28 项清单里，需实盘定价后补。
+
 ### 关键数据格式坑（.context 未提及，务必注意）
 `v260822_card.json` 的 `description` 列表**并非**"一元素一子句"：同一逻辑描述可能被切成多个片段，
 且 `<c val>` 标签会**跨片段**（例如 `["<c val=\"FF8000\">无法三连", "</c><c val=\"008000\">任务：</c>刷新5次"]`）。

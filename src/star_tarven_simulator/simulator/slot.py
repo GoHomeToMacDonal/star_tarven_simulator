@@ -190,10 +190,31 @@ class Slot:
             del self.units[unit_type]
 
     def replace_unit(self, unit_type: str, max_cnt: int, new_unit_type: str, new_cnt: int) -> None:
-        """数量 ≥ max_cnt 时整组替换一次。"""
+        """数量 ≥ max_cnt 时整组替换一次。
+
+        这是"成组兑换"语义（N 换 M，凑不满一组则不发生），例如
+        「将3陆战队员变为1牛头人陆战队员」。**精英化 / 升格类效果不要用它**，
+        那类效果是"最多 N 个"，见 :meth:`replace_upto`。
+        """
         if self.count(unit_type) >= max_cnt:
             self.remove_unit(unit_type, max_cnt)
             self.add_unit(new_unit_type, new_cnt)
+
+    def replace_upto(self, unit_type: str, max_cnt: int, new_unit_type: str) -> int:
+        """1:1 转化**最多** max_cnt 个单位，不足则把现有的全部转化。
+
+        精英化（「将5陆战队员精英化」）、变形（「将1陆战队员(精英)变为帝盾卫兵」）
+        等效果的语义是"最多 N 个"，而不是 :meth:`replace_unit` 的整组判定：
+        场上只有 3 个时应精英化 3 个，而不是一个都不转化。
+
+        :return: 实际转化的数量。
+        """
+        cnt = min(max_cnt, self.count(unit_type))
+        if cnt <= 0:
+            return 0
+        self.remove_unit(unit_type, cnt)
+        self.add_unit(new_unit_type, cnt)
+        return cnt
 
     def replace_all_units(self, unit_type: str, old_cnt: int, new_unit_type: str, new_cnt: int) -> None:
         """按 old_cnt 为一组，成组替换全部。"""

@@ -164,6 +164,22 @@ UNIT_PRICES["维京战机"] = 225.0
 UNIT_PRICES["旋风狂热者"] = 150.0
 
 
+# Values uniquely recovered from v20260826_card.json ``price`` residuals.
+# The source cards contain only one unknown unit (or independent equations),
+# so these values are safe to promote from the audit report into runtime pricing.
+UNIT_PRICES["混合体掠夺者"] = 250.0
+UNIT_PRICES["大力神"] = 1000.0
+UNIT_PRICES["原始穿刺者"] = 300.0
+UNIT_PRICES["塔里斯"] = 700.0
+UNIT_PRICES["驯养雷兽"] = 575.0
+UNIT_PRICES["原始守卫"] = 350.0
+UNIT_PRICES["幽灵(皇家卫队)"] = 900.0
+UNIT_PRICES["不朽者(精英)"] = 500.0
+UNIT_PRICES["跳虫(精英)"] = 75.0
+UNIT_PRICES["导弹塔"] = 100.0
+UNIT_PRICES["凯达琳巨石"] = 400.0
+
+
 # Fixed-hero contract names for Mengsk's royal conversions.
 UNIT_PRICES["皇家战列巡航舰"] = UNIT_PRICES["战列巡航舰(皇家卫队)"]
 UNIT_PRICES["皇家雷神"] = UNIT_PRICES["雷神(皇家卫队)"]
