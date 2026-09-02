@@ -1500,7 +1500,7 @@ reg("每回合结束时,相邻两侧卡牌获得2重工厂", "round_end", _neigh
 def _upgrade_kadarin(names):
     def h(slot, event):
         for s in slot.all:
-            if s.count("凯达林巨石") > 0 or s.count("凯达琳巨石") > 0:
+            if s.count("凯达林巨石") > 0 or s.count("凯达林巨石") > 0:
                 for name in names:
                     s.upgrade(name)
     return h

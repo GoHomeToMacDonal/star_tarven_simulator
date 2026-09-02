@@ -177,7 +177,26 @@ UNIT_PRICES["幽灵(皇家卫队)"] = 900.0
 UNIT_PRICES["不朽者(精英)"] = 500.0
 UNIT_PRICES["跳虫(精英)"] = 75.0
 UNIT_PRICES["导弹塔"] = 100.0
-UNIT_PRICES["凯达琳巨石"] = 400.0
+UNIT_PRICES["凯达林巨石"] = 400.0
+
+# Explicit values supplied by the user (not inferred from JSON Price).
+UNIT_PRICES["重工厂"] = 250.0
+UNIT_PRICES["热辣贝蒂"] = 450.0
+UNIT_PRICES["拟态雏虫"] = 0.0
+UNIT_PRICES["沃拉尊"] = 0.0
+UNIT_PRICES["末日巨兽"] = 3000.0
+UNIT_PRICES["警戒机器人"] = 300.0
+UNIT_PRICES["雷诺(狙击手)"] = 650.0
+UNIT_PRICES["英雄不朽者"] = 900.0
+UNIT_PRICES["先锋"] = 350.0
+UNIT_PRICES["风暴战舰(精英)"] = 600.0
+UNIT_PRICES["攻城坦克(皇家卫队)"] = 1000.0
+UNIT_PRICES["劫掠者(精英)"] = 225.0
+UNIT_PRICES["攻城坦克(精英)"] = 350.0
+UNIT_PRICES["女妖(精英)"] = 275.0
+UNIT_PRICES["凯达林巨石"] = 400.0
+UNIT_PRICES["行星要塞"] = 700.0
+UNIT_PRICES["过载水晶塔"] = 200.0
 
 
 # Fixed-hero contract names for Mengsk's royal conversions.
