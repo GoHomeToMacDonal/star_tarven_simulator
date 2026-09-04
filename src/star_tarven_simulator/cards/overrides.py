@@ -589,6 +589,8 @@ register_value("集结(7):将2不朽者变为英雄不朽者并将2非英雄生�
 
 
 def _gathering_take_elites(slot, event, times):
+    if times <= 0:
+        return
     for s in slot.protoss:
         if s is slot:
             continue
