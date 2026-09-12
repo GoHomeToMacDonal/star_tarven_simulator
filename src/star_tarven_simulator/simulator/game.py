@@ -323,7 +323,19 @@ class Tarven:
             self.extra_neighbors.get(other, set()).discard(index)
 
     def are_neighbors(self, left: Slot, right: Slot) -> bool:
-        return right in left.neighbors
+        """Compare board positions, not Slot object identity.
+
+        Selling replaces the board entry with a fresh empty Slot before events are
+        dispatched, while the SellingEvent intentionally retains the old Slot as
+        payload. Index-based geometry keeps that old payload adjacent to slots on
+        either side and also respects explicit extra-neighbor edges.
+        """
+        if left.index == right.index:
+            return False
+        return (
+            abs(left.index - right.index) == 1
+            or right.index in self.extra_neighbors.get(left.index, set())
+        )
 
     def larva(self, units: Dict[str, int]) -> None:
         """注卵：找到现有虫卵或空槽生成虫卵，注入单位并广播 any_card_larva。

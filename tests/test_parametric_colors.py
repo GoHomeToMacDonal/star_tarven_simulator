@@ -145,7 +145,7 @@ def test_color_hint_does_not_break_fallback():
 def test_real_card_color_hint_routes_to_quick_produce(cards):
     """真实数据：带 00FF00 提示的描述被路由到快速生产解析器。"""
     card_map = {c.name: c for c in cards}
-    qp = card_map["快速生产"]
+    qp = card_map["交叉火力"]
     assert any(
         P.hinted_resolver_names(extract_colors(raw)) == ["resolve_quick_produce"]
         for raw in qp.description
