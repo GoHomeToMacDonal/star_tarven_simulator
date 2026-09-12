@@ -85,9 +85,10 @@ def _place(tarven: Tarven, card, idx: int) -> Slot:
 
 def test_all_cards_load(loaded):
     cards, _ = loaded
-    # 153 = 原 154 减去「眼中无人」——它与「目中无人」是同一张卡的重复记录，
-    # 地图里只存在后者（前者在地图本地化中 0 命中）。
-    assert len(cards) == 153
+    # 157 = 从地图直接提取的卡牌数（data/v4.6.1.7_card.json）。
+    # 对比手抄快照 v20260826 的 153：新增 不法之徒 / 利维坦 / 复制中心 / 战士的财宝 /
+    # 挂件仓库 / 坚守信念（原「唯一」改名），移除 凶猛巨兽。
+    assert len(cards) == 157
 
 
 def test_coverage_threshold(loaded):

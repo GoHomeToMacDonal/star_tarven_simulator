@@ -17,7 +17,7 @@ from star_tarven_simulator.simulator.event import Event
 @pytest.fixture(scope="module")
 def recipe_state():
     cards, execution = load_cards()
-    master = build_fact_graph(cards, dataset_id="v20260826", strict=False)
+    master = build_fact_graph(cards, dataset_id="v4.6.1.7", strict=False)
     active = master.activate()
     return cards, execution, master, active
 
@@ -64,7 +64,7 @@ def test_complete_runtime_event_vocabulary_and_listener_audit(recipe_state):
 
 def test_graph_is_stable_and_contains_typed_relations(recipe_state):
     cards, _, master, _ = recipe_state
-    rebuilt = build_fact_graph(reversed(cards), dataset_id="v20260826", strict=False)
+    rebuilt = build_fact_graph(reversed(cards), dataset_id="v4.6.1.7", strict=False)
     assert rebuilt.fingerprint == master.fingerprint
 
     kinds = {relation.kind for relation in master.relations}

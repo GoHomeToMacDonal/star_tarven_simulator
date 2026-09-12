@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -2015,7 +2016,17 @@ def test_hansen_level_milestones_offer_unresearched_fifo_studies(cards):
 
 
 def test_thor_accepts_core_cards_with_additional_expansion_source(cards):
-    tarven = _tarven(cards, "雷神")
+    # 雷神的候选筛选必须对 source 取「交集」而不是相等：只要含任一核心来源就合格，
+    # 额外挂着拓展包来源也不该被排除。
+    #
+    # 从地图提取的 v4.6.1.7 数据里已经没有「核心X + 拓展包」双来源卡了
+    # （交叉火力在手抄快照 v20260826 里记的是 核心人族+重装上阵，地图上只挂 核心人族），
+    # 所以这里合成一张双来源卡来锁住该语义，而不是依赖某张卡恰好双来源。
+    origin = next(c for c in cards if c.name == "交叉火力")
+    dual = replace(origin, source=("核心人族", "重装上阵"))
+    pool_cards = [c for c in cards if c is not origin] + [dual]
+
+    tarven = _tarven(pool_cards, "雷神")
     target = _place(tarven, _blank_card("四星人族目标", level=4, race="terran"), 0)
     assert target.source_card is not None
 

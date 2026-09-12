@@ -19,7 +19,8 @@ star_tarven_simulator/            # 顶层：新版重写目标（当前基本�
 ├── AGENTS.md                     # 本文件
 ├── .context/                     # AI 上下文文档（详见下方）
 ├── data/
-│   └── v260822_card.json         # 【新版】卡牌数据，描述格式已优化（本项目的输入）
+│   ├── v4.6.1.7_card.json        # 【运行时输入】从地图提取的卡牌数据（157 张）
+│   └── v20260826_card.json       # 手抄快照：提取器的 diff 基线 + 定价审计裁判（153 张）
 ├── src/star_tarven_simulator/    # 新版实现的落点（目前仅 __init__.py 空壳）
 └── ext/
     └── tarven_interface/         # 【旧版】已有实现（git 子模块），是主要参考来源
@@ -44,7 +45,7 @@ ext/tarven_interface/src/tarven_interface/
 ## 快速上手顺序（给 AI）
 
 1. 先读 `.context/game-mechanics.md` —— 搞清楚游戏循环、实体、事件系统、四大种族机制。
-2. 再读 `.context/card-description-format.md` —— 搞清楚新版 `v260822_card.json` 的字段与
+2. 再读 `.context/card-description-format.md` —— 搞清楚卡牌 JSON 的字段与
    `<c val="...">` 颜色标记约定，以及它相对旧格式改了什么。
 3. 要写/改卡牌效果代码时，读 `.context/card-coding-guide.md` —— handler 模式、可用 API、
    事件目录、常见坑。
@@ -96,15 +97,43 @@ src/star_tarven_simulator/
 - 随机拓展包：`uv run python -m star_tarven_simulator.loader --random`
 - 测试：`uv run pytest tests/test_engine.py tests/test_expansions.py -q`
 
-当前效果解析覆盖率 **100%**（625/625 合并后描述行）。所有描述行均已解析为 handler；其中部分依赖
-"休眠事件"（效果体已实现，触发时机需上层驱动，见下）。
+当前效果解析覆盖率 **100%**（`v4.6.1.7_card.json` 629/629 合并后描述行；两份手抄快照
+`v20260826` / `v20260822` 各 625/625 也仍是 100%，注册表向后兼容）。所有描述行均已解析为
+handler；其中部分依赖"休眠事件"（效果体已实现，触发时机需上层驱动，见下）。
 
-- **回归起源**：`每回合结束时,若场上其他卡牌星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和3瓦斯`
-  —— 按约定：把被摧毁卡牌的**总价值换算成等值的「原始异龙」**（价值 250），并 +3 瓦斯。换算基准单位写在
-  `overrides._ORIGIN_PRIMAL_UNIT`，如需改成其它原始单位改这里即可。
+- **回归起源**：`每回合结束时,若场上其他卡牌星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和N瓦斯`
+  —— 按约定：把被摧毁卡牌的**总价值换算成等值的「原始异龙」**（价值 250），并 +N 瓦斯（普通 3 / 金色 6）。
+  换算基准单位写在 `overrides._ORIGIN_PRIMAL_UNIT`，如需改成其它原始单位改这里即可。
+
+### 运行时数据源迁移到 `v4.6.1.7_card.json`
+`loader.DEFAULT_DATA_PATH` 已从手抄快照 `v20260826_card.json` 切到地图提取产物
+`data/v4.6.1.7_card.json`。**手抄快照仍不可删**：`paths.REFERENCE_CARD_JSON` 用它做提取器的
+diff 基线，`scripts/audit_card_prices.py` 用它当定价裁判（拿提取快照评分是循环论证，见下文）。
+
+迁移带来的三类实质变化：
+
+1. **uuid 全部重编号**（旧 max 195 → 新 max 156），117 个共享 uuid 指向了不同的卡。进程内派生
+   （`no_draw_uuids` / `card_map`）都在加载时重建，没问题；但**任何按 uuid 持久化的产物失效**
+   （RL checkpoint、序列化的 recipe 目录、存档的 observation）。抽卡随机序列也随之改变——
+   `CardPool` 的"同 seed 位级一致"契约是**同一数据集内**成立，跨数据集不成立。
+2. **卡牌增删改名**：新增 `不法之徒` / `利维坦` / `复制中心` / `战士的财宝` / `挂件仓库`，
+   `唯一` 改名 `坚守信念`，移除 `凶猛巨兽`。数值也有漂移（金色泰凯斯 5→6 精英化、金色回归起源
+   3→6 瓦斯、机械感染阈值 3600→4000 且显式排除虫卵、金色毁灭者上限、金色入景随风复制 1→2）。
+   这些都在 `cards/overrides.py` 里以**并存**方式注册，所以两份手抄快照仍能 100% 解析。
+3. **`虚空构造体` 的 `灵能` tag 被补上了**（手抄快照漏抄）。地图 `gf_子特效字符串灵能` 会给挂了
+   灵能子特效的模板打 `具有灵能` 标签，而灵能的发动条件是
+   `gf_发动条件具有卡牌(星级高于此卡牌, 具有灵能)`（`TierHigher`：`lv_star > 自身 lv_star`）。
+   于是 6 星的虚空构造体成了灵能天花板，**它自己的「每张具有灵能的卡牌将其所有单位精英化」
+   不再触发**（场上没有 7 星灵能卡）。这是地图的真实语义，不是回归。
+   > ⚠ 遗留不一致：`recipes/generator.py` 的 `psi-ascension-engine` 模板仍把虚空构造体当作
+   > "psi_level=0 的收尾精英化位"（`satisfied_factors` 里那个硬编码的 `0<{anchor.level}`），
+   > 只校验 `anchor.level > max(producer, gatherer)`，没校验 `anchor.level > ascender.level`。
+   > 目录里因此还在推荐一个运行时**不会生效**的四卡组合。补上该约束会让这个模板产出 0 条配方
+   > （池内没有 7 星灵能卡），进而影响 `test_recipes.py` 里"模板集合恰好 6 个"的断言与对外的
+   > 策略指南，属产品决策，未擅自改动。
 
 ### 拓展包过滤（source 字段）
-`v260822_card.json` 每张卡带 `source` 列表，标注卡牌来源。`expansions.py` 据此过滤卡池：
+卡牌 JSON 每张卡带 `source` 列表，标注卡牌来源。`expansions.py` 据此过滤卡池：
 
 - **常驻启用（不可关闭）**：核心种族 `核心人族/核心神族/核心虫族/核心中立`，以及基础内容
   `辅助卡`（定点部署所需）、`特殊`；`source` 为空的卡牌也视为基础内容常驻启用。
@@ -118,7 +147,8 @@ src/star_tarven_simulator/
 接口（`expansions.py`）：`validate_selection` / `random_expansions(count=,rng=)` /
 `enabled_sources` / `filter_cards(cards, expansions)`。`loader.build_game(cards, expansions=None,
 random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终选择记到 `game.enabled_expansions`。
-命中数据：默认卡池 114/154；开任一拓展包后按其卡数扩充（如 `时不我待`/`中世纪集市` 各 +8）。
+命中数据（`v4.6.1.7_card.json`）：默认卡池 115/157；开任一拓展包后按其卡数扩充
+（`时不我待`/`中世纪集市` 各 +8，`一念之差` +6，其余各 +4）。
 
 ### 休眠事件（已实现、需外部驱动，默认不触发）
 部分效果的触发时机在"酒馆经济"里没有对应动作，但效果体已正确实现，接入上层驱动即可生效：
@@ -198,6 +228,7 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - `步兵连队`（uuid 23）的 `units` 原本缺 `反应堆`，是全数据里唯一"有『反应堆生产』
   描述却无反应堆单位"的卡，导致步坦协同（判定 `count("反应堆") > 0`）喂不到它。
   已在 `data/v20260826_card.json` 补 `"反应堆": 1`（旧快照 `v20260822_card.json` 未改）。
+  现在的运行时数据源 `v4.6.1.7_card.json` 直接从地图提取，本来就带 `反应堆`，此缺口不复存在。
 - `UNIT_PRICES` 现已覆盖两份快照里出现的**全部**单位（`斯旺` 是最后一项，值 200）。
   `docs/missing-unit-prices.txt` 只是历史清单，不代表当前缺口。
 - `data/v20260826_card.json` 的 `price` 列曾有 11 处笔误（多打一位前导数字、漏乘份数等）
@@ -257,7 +288,7 @@ uv run python scripts/audit_card_prices.py --cards data/v4.6.1.7_card.json --no-
 的约定差异（这三张所有单位价值都是 0）。
 
 ### 关键数据格式坑（.context 未提及，务必注意）
-`v260822_card.json` 的 `description` 列表**并非**"一元素一子句"：同一逻辑描述可能被切成多个片段，
+卡牌 JSON 的 `description` 列表**并非**"一元素一子句"：同一逻辑描述可能被切成多个片段，
 且 `<c val>` 标签会**跨片段**（例如 `["<c val=\"FF8000\">无法三连", "</c><c val=\"008000\">任务：</c>刷新5次"]`）。
 括号说明（如 `(F8可查看所有精英单位)`）也常被切成独立片段。此外，个别金色描述的触发词会被数据管线
 替换成占位符（如军事学院金色行的 `任意卡牌~A~时…`），前缀也可能残留碎片（如 `n/>部署时…`）——
@@ -296,8 +327,8 @@ star_tavern_cards.py  # 旧的“正则匹配 Galaxy 源码”提取器，现仅
 特效字符串是一条扁平分隔串。所以提取器**解释执行地图脚本**而不是猜文本：跑
 `InitGlobals` → `gf_初始化特殊词条` / `gf_初始化卡牌升级` → 各 `gt_*_Init`（登记卡池包）→
 逐包执行触发器（`gf_AddCardModule` 自己填模板表）→ `gf_初始化卡牌设计（补充）`。
-描述按 `<n/>` 拆行，与 `parsing/` 的输入格式一致（模拟器加载新文件：629 行中 618 行命中已有 handler；
-未命中的 11 行见"扩展效果覆盖率的方法"，多为数值改动 + `复制中心` / `战士的财宝` 两张新卡）。
+描述按 `<n/>` 拆行，与 `parsing/` 的输入格式一致。该文件现在就是**运行时输入**
+（`loader.DEFAULT_DATA_PATH`），629 行全部命中 handler。
 
 改这套东西时的坑：
 

@@ -32,6 +32,8 @@ def test_expansion_constants_present_in_data(loaded):
         set(exp.CORE_SOURCES)
         | set(exp.BASE_EXTRA_SOURCES)
         | set(exp.EXPANSION_PACKS)
+        # 提取器派生的「不进卡池」标签与其它来源并存，只影响能否被抽到
+        | {exp.NO_POOL_SOURCE}
     )
     # 数据中的每个来源都应被常量覆盖（否则说明有新来源未登记）
     assert data_sources <= known, f"未登记的来源: {data_sources - known}"

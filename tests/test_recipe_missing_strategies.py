@@ -12,7 +12,7 @@ from star_tarven_simulator.recipes.strategy import derive_strategy_guides
 @pytest.fixture(scope="module")
 def strategy_state():
     cards, _ = load_cards()
-    graph = build_fact_graph(cards, dataset_id="v20260826", strict=False).activate()
+    graph = build_fact_graph(cards, dataset_id="v4.6.1.7", strict=False).activate()
     catalog = generate_recipe_catalog(graph, max_recipes=100, limit_per_template=10_000)
     return cards, graph, catalog
 
@@ -92,15 +92,27 @@ def test_psi_lineup_runtime_round_end_order(strategy_state):
 
     # 势不可挡初始有1塔；补至终局要求的10塔。
     tarven.slots[1].add_unit("水晶塔", 9)
+
+    # 灵能的发动条件是「场上存在星级更高的灵能卡牌」（地图 gf_子特效字符串灵能:
+    # gf_发动条件具有卡牌(星级高于此卡牌, 具有灵能)），因此星级最高的那张灵能卡
+    # 永远不触发自己的灵能。虚空构造体自己就带灵能子特效（v20260826 手抄快照漏抄了
+    # 这条 tag，v4.6.1.7 从地图提取后补上），6 星即本局灵能天花板 ——
+    # 它的「每张具有灵能的卡牌将其所有单位精英化」不会生效，除非场上出现 7 星灵能卡。
+    assert [slot.psi_level for slot in tarven.slots[:4]] == [3, 4, 5, 6]
+    assert tarven.psi_level_max == 6
+
     tarven.round_end()
 
-    assert tarven.slots[0].count("幽灵") == 2  # 幽灵不在当前 ELITE_UNITS 映射中
-    assert tarven.slots[0].count("陆战队员") == 0
-    assert tarven.slots[0].count("陆战队员(精英)") == 6
-    assert tarven.slots[0].count("劫掠者(精英)") == 5
-    assert tarven.slots[1].count("执政官") == 0
-    assert tarven.slots[1].count("执政官(精英)") >= 7
-    assert tarven.slots[2].count("混合体巨兽") == 0  # 5星最高灵能锚点不触发自身灵能
+    # 三张低星灵能卡照常发动
+    assert tarven.slots[0].count("幽灵") == 2
+    assert tarven.slots[1].count("执政官(精英)") == 1
+    assert tarven.slots[2].count("混合体巨兽") == 1
+    # 全场精英化没有发生：单位停在普通形态（劫掠者 4 + 反应堆产出 1 = 5）
+    assert tarven.slots[0].count("陆战队员") == 6
+    assert tarven.slots[0].count("陆战队员(精英)") == 0
+    assert tarven.slots[0].count("劫掠者") == 5
+    assert tarven.slots[0].count("劫掠者(精英)") == 0
+    assert tarven.slots[1].count("执政官") == 6
 
 
 def test_darkness_carousel_one_sale_runtime(strategy_state):

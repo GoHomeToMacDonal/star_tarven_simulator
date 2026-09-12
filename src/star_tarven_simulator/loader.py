@@ -1,4 +1,9 @@
-"""数据加载：读取 v20260822 卡牌 JSON、解析效果、构建引擎，并给出覆盖率报告。"""
+"""数据加载：读取卡牌 JSON、解析效果、构建引擎，并给出覆盖率报告。
+
+默认数据源是 :data:`DEFAULT_DATA_PATH`（``data/v4.6.1.7_card.json``），由
+``extract_cards.py`` 直接从地图提取。手抄快照 ``data/v20260826_card.json`` 保留
+作为提取器的 diff 基线与 ``scripts/audit_card_prices.py`` 的定价裁判，不再是运行时输入。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,7 @@ from star_tarven_simulator.simulator.card_engine import CardEngine
 from star_tarven_simulator.simulator.game import Game
 
 DEFAULT_DATA_PATH = (
-    Path(__file__).resolve().parents[2] / "data" / "v20260826_card.json"
+    Path(__file__).resolve().parents[2] / "data" / "v4.6.1.7_card.json"
 )
 
 

@@ -196,6 +196,8 @@ def _elite_marine_marauder(n):
 
 reg("每回合结束时,每张人族卡牌将3陆战队员和3劫掠者精英化", "round_end", _elite_marine_marauder(3))
 reg("每回合结束时,每张人族卡牌将5陆战队员和5劫掠者精英化", "round_end", _elite_marine_marauder(5))
+# v4.6.1.7 起金色泰凯斯由 5 提到 6
+reg("每回合结束时,每张人族卡牌将6陆战队员和6劫掠者精英化", "round_end", _elite_marine_marauder(6))
 
 
 def _elite_marine_to_shield(n):
@@ -786,13 +788,30 @@ reg("唯一:每回合结束时,场上每有20爆虫此卡牌孵化1爆虫", "rou
 reg("唯一:每回合结束时,场上每有15爆虫此卡牌孵化1爆虫", "round_end", _hatch_baneling(15))
 
 
-def _doom_on_valuable_zerg_sold(slot, event):
-    sold = getattr(event, "sold_slot", None)
-    if sold is not None and sold.tags.has("zerg") and sold.price() >= 3600:
-        slot.add_unit("末日巨兽", 1)
+def _doom_on_valuable_zerg_sold(threshold, exclude_egg=False):
+    """机械感染：任意价值达到 ``threshold`` 的虫族卡牌出售时获得 1 末日巨兽。
+
+    ``exclude_egg=True`` 时排除虫卵牌（v4.6.1.7 起描述明确写了"非虫卵"，
+    否则自家注卵产出的虫卵牌也会满足条件）。
+    """
+    def h(slot, event):
+        sold = getattr(event, "sold_slot", None)
+        if sold is None or not sold.tags.has("zerg"):
+            return
+        if exclude_egg and sold.card_type == "虫卵":
+            return
+        if sold.price() >= threshold:
+            slot.add_unit("末日巨兽", 1)
+    return h
 
 
-reg("唯一:任意价值达到3600的虫族卡牌出售时,此卡牌获得1末日巨兽", "any_card_sold", _doom_on_valuable_zerg_sold)
+reg("唯一:任意价值达到3600的虫族卡牌出售时,此卡牌获得1末日巨兽", "any_card_sold", _doom_on_valuable_zerg_sold(3600))
+# v4.6.1.7：阈值提到 4000，并显式排除虫卵牌
+reg(
+    "唯一:任意价值达到4000的非虫卵虫族卡牌出售时,此卡牌获得1末日巨兽",
+    "any_card_sold",
+    _doom_on_valuable_zerg_sold(4000, exclude_egg=True),
+)
 
 
 def _hatch_extra_to_self(gain_brood):
@@ -997,6 +1016,7 @@ def _sell_darkness_destroyer(cap):
     return h
 
 
+reg("出售时,每有1黑暗值,相邻左侧卡牌获得1毁灭者,最多获得10", "selling", _sell_darkness_destroyer(10))
 reg("出售时,每有1黑暗值,相邻左侧卡牌获得1毁灭者,最多获得30", "selling", _sell_darkness_destroyer(30))
 
 
@@ -1490,7 +1510,8 @@ def _low_to_high_bio(n):
 
 
 reg("任意卡牌注卵时,自身及相邻卡牌将1最低价值非英雄生物变为最高价值非英雄生物", "any_card_larva", _low_to_high_bio(1))
-# 金色描述里的触发词被数据管线替换成占位符 "~A~"，按注卵语义注册
+reg("任意卡牌注卵时,自身及相邻卡牌将2最低价值非英雄生物变为最高价值非英雄生物", "any_card_larva", _low_to_high_bio(2))
+# 手抄快照 v20260826 的金色行触发词被数据管线替换成占位符 "~A~"，按注卵语义另注册一条
 reg("任意卡牌~A~时,自身及相邻卡牌将2最低价值非英雄生物变为最高价值非英雄生物", "any_card_larva", _low_to_high_bio(2))
 
 
@@ -1648,23 +1669,64 @@ def _xiaoming(slot, event):
 reg("进场时,复制左侧相邻1-6星的卡牌到暂存区并被其夺取,并使其获得星空加速", "entering", _xiaoming)
 
 
-# --- 入景随风：复制各卡牌最高价值非英雄单位;价值超 6000 则被夺取 -----------
-def _rush_follow(slot, event):
-    for s in slot.all:
-        if s is slot:
+# --- 复制中心：快速生产时,从每张暂存卡牌里随机取 1 非英雄生物单位 -----------
+def _cached_cards(tarven):
+    """暂存区里的卡牌定义列表（跳过空格；字符串项按 card_type 名解析）。"""
+    cards = []
+    for item in tarven.cache:
+        if item is None:
             continue
-        bios = [u for u in s.units if u not in HERO_UNITS]
-        if bios:
-            best = max(bios, key=lambda u: UNIT_PRICES.get(u, 0.0))
-            slot.add_unit(best, 1)
-    if slot.price() > 6000:
-        others = [s for s in slot.all if s is not slot]
-        if others:
-            best = max(others, key=lambda s: s.price())
-            event.tarven.seize(slot, best)
+        card = tarven.pool.card_type_map.get(item) if isinstance(item, str) else item
+        if card is not None:
+            cards.append(card)
+    return cards
 
 
-reg("每回合结束时,复制场上各卡牌1价值最高的非英雄单位到此卡牌;若此卡牌价值大于6000,则被最高价值的其他卡牌夺取", "round_end", _rush_follow)
+def _copy_center(repeat):
+    """复制中心：每张暂存卡牌贡献 ``repeat`` 个随机非英雄生物单位。
+
+    对齐地图 ``gt_通用奖励触发器_复制中心``：它对每张暂存卡牌调用
+    ``gf_卡牌模板内随机非特殊单位类型(…, Biological, 排除 Heroic)``，即在该卡牌模板的
+    **不同单位类型**里均匀随机挑一种（与份数无关），金色则每张卡独立抽两次。
+    """
+    def h(slot, event):
+        rng = event.tarven.rng
+        for card in _cached_cards(event.tarven):
+            bios = [
+                u for u in card.units
+                if u in BIOLOGICAL_UNITS and u not in HERO_UNITS
+            ]
+            if not bios:
+                continue
+            for _ in range(repeat):
+                slot.add_unit(rng.choice(bios), 1)
+    return h
+
+
+reg("快速生产:获得每张暂存卡牌的1非英雄生物单位", "quick_produce", _copy_center(1))
+reg("快速生产:获得每张暂存卡牌的1非英雄生物单位,重复两次", "quick_produce", _copy_center(2))
+
+
+# --- 入景随风：复制各卡牌最高价值的 n 个非英雄单位;价值超 6000 则被夺取 -----
+def _rush_follow(n):
+    def h(slot, event):
+        for s in slot.all:
+            if s is slot:
+                continue
+            bios = [u for u in s.units if u not in HERO_UNITS]
+            if bios:
+                best = max(bios, key=lambda u: UNIT_PRICES.get(u, 0.0))
+                slot.add_unit(best, n)
+        if slot.price() > 6000:
+            others = [s for s in slot.all if s is not slot]
+            if others:
+                best = max(others, key=lambda s: s.price())
+                event.tarven.seize(slot, best)
+    return h
+
+
+reg("每回合结束时,复制场上各卡牌1价值最高的非英雄单位到此卡牌;若此卡牌价值大于6000,则被最高价值的其他卡牌夺取", "round_end", _rush_follow(1))
+reg("每回合结束时,复制场上各卡牌2价值最高的非英雄单位到此卡牌;若此卡牌价值大于6000,则被最高价值的其他卡牌夺取", "round_end", _rush_follow(2))
 
 
 # --- 风暴英雄：获得升级时,随机获得 1 英雄 ---------------------------------
@@ -1835,6 +1897,23 @@ def _deploy_gain_mineral(slot, event):
 reg("部署时,获得1晶体矿", "deployment", _deploy_gain_mineral)
 
 
+def _deploy_gain_treasure(slot, event):
+    """战士的财宝（狂热者英雄奖励的辅助卡）：部署时 +10 晶体矿、+10 瓦斯。
+
+    地图 ``gf_AddCardModule`` 里这张卡挂了三段奖励，顺序为
+    晶体矿 +10 → 瓦斯上限 +4 → 瓦斯 +10：基础瓦斯上限只有 6，必须先抬上限
+    才拿得满 10 瓦斯（描述文本只渲染了两段资源，上限那段没有文字）。
+    上限会在回合开始时重置回 6，因此这里等于本回合的一次性超额瓦斯。
+    """
+    tarven = event.tarven
+    tarven.mineral += 10
+    tarven.gas_max += 4
+    tarven.gas = min(tarven.gas + 10, tarven.gas_max)
+
+
+reg("部署时,获得10晶体矿和10瓦斯", "deployment", _deploy_gain_treasure)
+
+
 def _deploy_discover_6star(slot, event):
     event.tarven.discover(level=[6])
 
@@ -1992,40 +2071,43 @@ register_value(
 
 
 
-# --- 回归起源：摧毁所有其他卡牌,把总价值换算成等值原始单位 + 3 瓦斯 ---------
+# --- 回归起源：摧毁所有其他卡牌,把总价值换算成等值原始单位 + n 瓦斯 ---------
 #     "相同价值的原始单位"按用户口径：把被摧毁卡牌的总价值换算成等值的某种原始单位，
 #     这里选用「原始异龙」(价值 250) 作为换算基准。
 _ORIGIN_PRIMAL_UNIT = "原始异龙"
 
 
-def _return_to_origin(slot, event):
-    others = [s for s in slot.all if s is not slot]
-    if not others:
-        return
-    levels = [s.level for s in others]
-    races = [s.tags for s in others]
-    # 星级互不相同
-    if len(set(levels)) != len(levels):
-        return
-    # 种族互不相同（以四大种族 tag 为准，取每张卡的种族标记组合）
-    race_sigs = []
-    for s in others:
-        sig = tuple(sorted(r for r in ("zerg", "terran", "protoss", "neutral") if s.tags.has(r)))
-        race_sigs.append(sig)
-    if len(set(race_sigs)) != len(race_sigs):
-        return
+def _return_to_origin(gas):
+    def h(slot, event):
+        others = [s for s in slot.all if s is not slot]
+        if not others:
+            return
+        levels = [s.level for s in others]
+        # 星级互不相同
+        if len(set(levels)) != len(levels):
+            return
+        # 种族互不相同（以四大种族 tag 为准，取每张卡的种族标记组合）
+        race_sigs = []
+        for s in others:
+            sig = tuple(sorted(r for r in ("zerg", "terran", "protoss", "neutral") if s.tags.has(r)))
+            race_sigs.append(sig)
+        if len(set(race_sigs)) != len(race_sigs):
+            return
 
-    total_value = sum(s.price() for s in others)
-    for s in list(others):
-        event.tarven.destroy(s)
+        total_value = sum(s.price() for s in others)
+        for s in list(others):
+            event.tarven.destroy(s)
 
-    unit_price = UNIT_PRICES.get(_ORIGIN_PRIMAL_UNIT, 0.0)
-    if unit_price > 0:
-        slot.add_unit(_ORIGIN_PRIMAL_UNIT, int(total_value // unit_price))
-    event.tarven.gas = min(event.tarven.gas + 3, event.tarven.gas_max)
+        unit_price = UNIT_PRICES.get(_ORIGIN_PRIMAL_UNIT, 0.0)
+        if unit_price > 0:
+            slot.add_unit(_ORIGIN_PRIMAL_UNIT, int(total_value // unit_price))
+        event.tarven.gas = min(event.tarven.gas + gas, event.tarven.gas_max)
+    return h
 
 
-reg("每回合结束时,若场上其他卡牌的星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和3瓦斯", "round_end", _return_to_origin)
+reg("每回合结束时,若场上其他卡牌的星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和3瓦斯", "round_end", _return_to_origin(3))
+# v4.6.1.7：金色行由 3 瓦斯提到 6 瓦斯
+reg("每回合结束时,若场上其他卡牌的星级与种族均不同,则摧毁所有其他卡牌并获得相同价值的原始单位和6瓦斯", "round_end", _return_to_origin(6))
 
 
 # --- 英灵殿：唯一,其他玩家出售/出局英雄卡时,折跃其中的 1 英雄单位 ----------
