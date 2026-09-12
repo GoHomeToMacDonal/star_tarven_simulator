@@ -107,7 +107,11 @@ def build_game(
         表示只启用核心种族与基础内容。非法选择会抛 :class:`ValueError`。
     :param random_pick: 为 ``True`` 时忽略 ``expansions``，随机挑选一组合法拓展包。
     """
-    from star_tarven_simulator.expansions import BASE_EXTRA_SOURCES, filter_cards
+    from star_tarven_simulator.expansions import (
+        BASE_EXTRA_SOURCES,
+        NO_POOL_SOURCE,
+        filter_cards,
+    )
     from star_tarven_simulator.expansions import random_expansions as _pick
     from star_tarven_simulator.simulator.hero import validate_hero_assignment
 
@@ -116,11 +120,14 @@ def build_game(
         expansions = _pick(rng=rng)
 
     pool_cards = filter_cards(cards, expansions)
-    # 辅助卡 / 特殊卡：保留在卡池对象内（可查询、可被引擎使用），但不进入可抽取的等级桶。
+    # 辅助卡 / 特殊卡、以及提取器标记为「不进卡池」的卡（沙盒测试卡、无法进入卡池的
+    # 英雄专属卡、只能由专属效果授予的辅助卡）：保留在卡池对象内（可查询、可被引擎
+    # 使用），但不进入可抽取的等级桶。
+    _no_draw_sources = set(BASE_EXTRA_SOURCES) | {NO_POOL_SOURCE}
     _no_draw = {
         c.uuid
         for c in pool_cards
-        if set(getattr(c, "source", []) or []) & set(BASE_EXTRA_SOURCES)
+        if set(getattr(c, "source", []) or []) & _no_draw_sources
     }
     pool = CardPool(pool_cards, no_draw_uuids=_no_draw, rng=rng)
     engine = CardEngine(pool_cards)

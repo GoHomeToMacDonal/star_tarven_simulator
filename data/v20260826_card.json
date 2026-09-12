@@ -323,11 +323,11 @@
     ],
     "units": {
       "蟑螂": 4,
-      "破坏者": 1
+      "破坏者": 2
     },
     "uuid": 11,
     "race": "zerg",
-    "price": 2800.0,
+    "price": 800.0,
     "tags": [
       "zerg"
     ],
@@ -414,7 +414,7 @@
     },
     "uuid": 14,
     "race": "terran",
-    "price": 1750.0,
+    "price": 750.0,
     "tags": [
       "terran",
       "无法三连"
@@ -769,7 +769,7 @@
     },
     "uuid": 26,
     "race": "terran",
-    "price": 11500.0,
+    "price": 1500.0,
     "tags": [
       "terran"
     ],
@@ -1123,7 +1123,7 @@
     },
     "uuid": 40,
     "race": "terran",
-    "price": 1825.0,
+    "price": 825.0,
     "tags": [
       "terran"
     ],
@@ -1151,7 +1151,7 @@
     },
     "uuid": 41,
     "race": "zerg",
-    "price": 3650.0,
+    "price": 650.0,
     "tags": [
       "zerg"
     ],
@@ -1269,7 +1269,7 @@
     },
     "uuid": 46,
     "race": "terran",
-    "price": 1300.0,
+    "price": 1350.0,
     "tags": [
       "terran"
     ],
@@ -1618,7 +1618,7 @@
     },
     "uuid": 58,
     "race": "neutral",
-    "price": 21200.0,
+    "price": 1200.0,
     "tags": [
       "neutral",
       "属于原始虫群",
@@ -2720,7 +2720,7 @@
     },
     "uuid": 109,
     "race": "protoss",
-    "price": 12150.0,
+    "price": 2150.0,
     "tags": [
       "protoss"
     ],
@@ -2949,7 +2949,7 @@
     },
     "uuid": 121,
     "race": "zerg",
-    "price": 350.0,
+    "price": 700.0,
     "tags": [
       "zerg"
     ],
@@ -3687,7 +3687,7 @@
     },
     "uuid": 168,
     "race": "terran",
-    "price": 3100.0,
+    "price": 3600.0,
     "tags": [
       "terran"
     ],
@@ -3979,7 +3979,7 @@
     },
     "uuid": 178,
     "race": "terran",
-    "price": 4225.0,
+    "price": 3900.0,
     "tags": [
       "terran"
     ],
@@ -4153,7 +4153,7 @@
     },
     "uuid": 184,
     "race": "terran",
-    "price": 900.0,
+    "price": 975.0,
     "tags": [
       "terran",
       "能够定点部署"
@@ -4186,35 +4186,6 @@
     "source": [
       "辅助卡"
     ]
-  },
-  {
-    "name": "眼中无人",
-    "level": 4,
-    "description": [
-      "能够<c val=\"008080\">定点部署</c>",
-      "每回合结束时，若场上没有空格，<c val=\"0080FF\">折跃</c>1风暴战舰(精英)"
-    ],
-    "gold_description": [
-      "能够<c val=\"008080\">定点部署</c>",
-      "每回合结束时，若场上没有空格，<c val=\"0080FF\">折跃</c>2风暴战舰(精英)"
-    ],
-    "gold_tags": [
-      "protoss",
-      "能够定点部署"
-    ],
-    "units": {
-      "凤凰": 2,
-      "虚空辉光舰": 2,
-      "水晶塔": 1
-    },
-    "uuid": 186,
-    "race": "protoss",
-    "price": 1300.0,
-    "tags": [
-      "protoss",
-      "能够定点部署"
-    ],
-    "source": []
   },
   {
     "name": "矿簇",

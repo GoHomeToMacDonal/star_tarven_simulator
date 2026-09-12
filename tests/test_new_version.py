@@ -161,7 +161,8 @@ def test_void_projection_gain_blocked_by_blade_queen(cards):
 def test_new_version_full_coverage(cards):
     _, coverage = load_cards()
     assert coverage.rate == 1.0, coverage.summary()
-    assert coverage.total_lines == 629
+    # 625 = 原 629 减去「眼中无人」的 4 行（该卡是「目中无人」的重复记录，已删）
+    assert coverage.total_lines == 625
 
 
 # ---------------------------------------------------------------------------

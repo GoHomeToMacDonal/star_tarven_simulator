@@ -1,0 +1,380 @@
+{
+  "units": {
+    "BroodLord": {
+      "name": "巢虫领主",
+      "value": 500.0
+    },
+    "Corruptor": {
+      "name": "腐化者",
+      "value": 250.0
+    },
+    "Cyclone": {
+      "name": "飓风",
+      "value": 250.0
+    },
+    "DarkTemplarTaldarim": {
+      "name": "鲜血猎手",
+      "value": 125.0
+    },
+    "Firebat": {
+      "name": "火蝠",
+      "value": 125.0
+    },
+    "GhostLaserLines": {
+      "name": "幽灵",
+      "value": 375.0
+    },
+    "Hellion": {
+      "name": "恶火",
+      "value": 100.0
+    },
+    "HybridDestroyer": {
+      "name": "混合体毁灭者",
+      "value": 500.0
+    },
+    "HybridNemesis": {
+      "name": "混合体天罚者",
+      "value": null
+    },
+    "Hydralisk": {
+      "name": "刺蛇",
+      "value": 150.0
+    },
+    "Liberator": {
+      "name": "解放者",
+      "value": 275.0
+    },
+    "LurkerMP": {
+      "name": "潜伏者",
+      "value": 300.0
+    },
+    "Marauder": {
+      "name": "劫掠者",
+      "value": 125.0
+    },
+    "Marine": {
+      "name": "陆战队员",
+      "value": 50.0
+    },
+    "Medivac": {
+      "name": "医疗运输机",
+      "value": 200.0
+    },
+    "MengskMarauder": {
+      "name": "帝盾卫兵",
+      "value": 200.0
+    },
+    "Mutalisk": {
+      "name": "异龙",
+      "value": 150.0
+    },
+    "NovaInfestedBanshee": {
+      "name": "被感染的女妖",
+      "value": 200.0
+    },
+    "PrimalFlyer": {
+      "name": "原始异龙",
+      "value": 250.0
+    },
+    "PrisonZealot": {
+      "name": "不死队",
+      "value": 100.0
+    },
+    "Pygalisk": {
+      "name": "幼雷兽",
+      "value": 180.0
+    },
+    "Pylon": {
+      "name": "水晶塔",
+      "value": 0.0
+    },
+    "Queen": {
+      "name": "虫后",
+      "value": 175.0
+    },
+    "Ravasaur": {
+      "name": "暴掠龙",
+      "value": 200.0
+    },
+    "Roach": {
+      "name": "蟑螂",
+      "value": 100.0
+    },
+    "Scout": {
+      "name": "侦察机",
+      "value": 250.0
+    },
+    "SiegeTank": {
+      "name": "攻城坦克",
+      "value": 275.0
+    },
+    "Spectre": {
+      "name": "幽魂",
+      "value": 275.0
+    },
+    "Stalker": {
+      "name": "追猎者",
+      "value": 175.0
+    },
+    "SwarmHostMP": {
+      "name": "虫群宿主",
+      "value": 350.0
+    },
+    "ThorAP2": {
+      "name": "雷神",
+      "value": 500.0
+    },
+    "VikingAssault": {
+      "name": "维京战机",
+      "value": 225.0
+    },
+    "VikingFighter": {
+      "name": "维京战机",
+      "value": 225.0
+    },
+    "Viper": {
+      "name": "飞蛇",
+      "value": 400.0
+    },
+    "VoidPylon": {
+      "name": "虚空水晶塔",
+      "value": 0.0
+    },
+    "VoidRay": {
+      "name": "虚空辉光舰",
+      "value": 400.0
+    },
+    "WarHound": {
+      "name": "战狼",
+      "value": 300.0
+    },
+    "WidowMine": {
+      "name": "寡妇雷",
+      "value": 100.0
+    },
+    "Wraith": {
+      "name": "怨灵战机",
+      "value": 250.0
+    },
+    "Zealot": {
+      "name": "狂热者",
+      "value": 100.0
+    },
+    "Zergling": {
+      "name": "跳虫",
+      "value": 25.0
+    },
+    "Adept": {
+      "name": "使徒",
+      "value": 150.0
+    },
+    "AlarakChampion": {
+      "name": "阿拉纳克",
+      "value": 1500.0
+    },
+    "ArbiterMP": {
+      "name": "仲裁者",
+      "value": 1000.0
+    },
+    "ArtanisVoid": {
+      "name": "阿塔尼斯",
+      "value": 1000.0
+    },
+    "Baneling": {
+      "name": "爆虫",
+      "value": 65.0
+    },
+    "BlightbringerEgg": {
+      "name": "刺蛇卵",
+      "value": 0.0
+    },
+    "Changeling": {
+      "name": "拟态雏虫",
+      "value": 0.0
+    },
+    "CreepTumor": {
+      "name": "菌毯肿瘤",
+      "value": 0.0
+    },
+    "DarkTemplarShakuras": {
+      "name": "黑暗圣堂武士",
+      "value": 250.0
+    },
+    "Dehaka": {
+      "name": "德哈卡",
+      "value": 300.0
+    },
+    "DehakaMirrorImage": {
+      "name": "德哈卡分身",
+      "value": 450.0
+    },
+    "Diamondback": {
+      "name": "响尾蛇战车",
+      "value": 250.0
+    },
+    "Dragoon": {
+      "name": "龙骑士",
+      "value": 175.0
+    },
+    "FactoryFlying": {
+      "name": "重工厂",
+      "value": 250.0
+    },
+    "FenixChampion": {
+      "name": "菲尼克斯",
+      "value": 1000.0
+    },
+    "FlamingBetty": {
+      "name": "热辣贝蒂",
+      "value": 450.0
+    },
+    "HighTemplar": {
+      "name": "高阶圣堂武士",
+      "value": 200.0
+    },
+    "HighTemplarTaldarim": {
+      "name": "晋升者",
+      "value": 300.0
+    },
+    "HotSLeviathan": {
+      "name": "利维坦",
+      "value": 2000.0
+    },
+    "HybridDominatorVoid": {
+      "name": "混合体支配者",
+      "value": 1400.0
+    },
+    "HybridReaver": {
+      "name": "混合体掠夺者",
+      "value": 250.0
+    },
+    "Immortal": {
+      "name": "不朽者",
+      "value": 350.0
+    },
+    "InfestedAbomination": {
+      "name": "畸变体",
+      "value": 400.0
+    },
+    "InfestedStukov": {
+      "name": "斯托科夫",
+      "value": 500.0
+    },
+    "InfestedTerranCampaign": {
+      "name": "被感染的陆战队员",
+      "value": 100.0
+    },
+    "Infestor": {
+      "name": "感染者",
+      "value": 250.0
+    },
+    "KaraxChampion": {
+      "name": "凯拉克斯",
+      "value": 600.0
+    },
+    "KerriganGhostLab": {
+      "name": "莎拉·凯瑞甘",
+      "value": 50.0
+    },
+    "KhaydarinMonolith": {
+      "name": "凯达林巨石",
+      "value": 400.0
+    },
+    "MarineWarfield": {
+      "name": "沃菲尔德将军",
+      "value": 150.0
+    },
+    "Medic": {
+      "name": "医疗兵",
+      "value": 125.0
+    },
+    "MissileTurret": {
+      "name": "导弹塔",
+      "value": 100.0
+    },
+    "Mohandar": {
+      "name": "莫汉达尔",
+      "value": 600.0
+    },
+    "Monitor": {
+      "name": "警戒机器人",
+      "value": 300.0
+    },
+    "Observer": {
+      "name": "侦测器",
+      "value": 0.0
+    },
+    "Odin": {
+      "name": "奥丁",
+      "value": 2500.0
+    },
+    "Phoenix": {
+      "name": "凤凰",
+      "value": 250.0
+    },
+    "Ravager": {
+      "name": "破坏者",
+      "value": 200.0
+    },
+    "Raven": {
+      "name": "铁鸦",
+      "value": 250.0
+    },
+    "Reaper": {
+      "name": "收割者",
+      "value": 100.0
+    },
+    "Reaver": {
+      "name": "毁灭者",
+      "value": 400.0
+    },
+    "ScienceVessel": {
+      "name": "科学船",
+      "value": 300.0
+    },
+    "Scourge": {
+      "name": "爆蚊",
+      "value": 37.0
+    },
+    "SentryAiur": {
+      "name": "机械哨兵",
+      "value": 150.0
+    },
+    "SentryPurifier": {
+      "name": "激励者",
+      "value": 150.0
+    },
+    "TechLab": {
+      "name": "科技实验室",
+      "value": 0.0
+    },
+    "Urun": {
+      "name": "尤尔兰",
+      "value": 400.0
+    },
+    "VorazunChampion": {
+      "name": "沃拉尊",
+      "value": 0.0
+    },
+    "Vulture": {
+      "name": "秃鹫",
+      "value": 75.0
+    },
+    "XelNagaChargedCrystal": {
+      "name": "萨尔纳加充能水晶",
+      "value": 300.0
+    },
+    "Yagdra": {
+      "name": "亚格卓拉",
+      "value": 1000.0
+    },
+    "ZaGara": {
+      "name": "扎加拉",
+      "value": 400.0
+    },
+    "ZeratulVoidAiur01": {
+      "name": "泽拉图",
+      "value": 1000.0
+    }
+  }
+}

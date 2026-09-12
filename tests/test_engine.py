@@ -85,7 +85,9 @@ def _place(tarven: Tarven, card, idx: int) -> Slot:
 
 def test_all_cards_load(loaded):
     cards, _ = loaded
-    assert len(cards) == 154
+    # 153 = 原 154 减去「眼中无人」——它与「目中无人」是同一张卡的重复记录，
+    # 地图里只存在后者（前者在地图本地化中 0 命中）。
+    assert len(cards) == 153
 
 
 def test_coverage_threshold(loaded):

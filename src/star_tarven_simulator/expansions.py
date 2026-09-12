@@ -29,6 +29,12 @@ CORE_SOURCES = ("核心人族", "核心神族", "核心虫族", "核心中立")
 # 非拓展包的基础内容来源：辅助卡（定点部署所需）与特殊卡，随核心一并常驻启用
 BASE_EXTRA_SOURCES = ("辅助卡", "特殊")
 
+# 「永不进入卡池」标签。由提取器按地图事实推导（``card_extractor.SOURCE_NO_POOL``）：
+# ``无法进入卡池`` 识别符、星级 > 6 的沙盒测试卡、以及不在"发现辅助卡"窗口内的辅助卡。
+# 它与其它来源标签并存（如 ``["辅助卡", "不进卡池"]``），只表示"不能被商店/发现抽到"，
+# 不表示"该卡不启用"——这些卡仍可由专属效果、英雄技能等途径获得。
+NO_POOL_SOURCE = "不进卡池"
+
 # 可选拓展包（默认关闭）
 EXPANSION_PACKS = (
     "作战计划",
@@ -143,6 +149,9 @@ def enabled_sources(
     sources: Set[str] = set(CORE_SOURCES)
     if include_base_extra:
         sources |= set(BASE_EXTRA_SOURCES)
+    # 不进卡池只影响抽取，不是"启用/关闭"维度，故始终视为启用来源，
+    # 避免仅带该标签的卡牌被 filter_cards 整张过滤掉。
+    sources.add(NO_POOL_SOURCE)
     sources |= set(packs)
     return sources
 

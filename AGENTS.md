@@ -198,9 +198,63 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - `步兵连队`（uuid 23）的 `units` 原本缺 `反应堆`，是全数据里唯一"有『反应堆生产』
   描述却无反应堆单位"的卡，导致步坦协同（判定 `count("反应堆") > 0`）喂不到它。
   已在 `data/v20260826_card.json` 补 `"反应堆": 1`（旧快照 `v20260822_card.json` 未改）。
-- `UNIT_PRICES` 缺 `劫掠者(精英)` / `攻城坦克(精英)` / `黑暗圣堂武士(精英)` /
-  `风暴战舰(精英)` / `跳虫(精英)`，`Slot.price()` 按 0 计 —— 精英化这些单位会**倒扣**战力。
-  这几项未收录在 `docs/missing-unit-prices.txt` 的 28 项清单里，需实盘定价后补。
+- `UNIT_PRICES` 现已覆盖两份快照里出现的**全部**单位（`斯旺` 是最后一项，值 200）。
+  `docs/missing-unit-prices.txt` 只是历史清单，不代表当前缺口。
+- `data/v20260826_card.json` 的 `price` 列曾有 11 处笔误（多打一位前导数字、漏乘份数等）
+  和 1 处单位数量错误（`孵化蟑螂` 的 `破坏者` 1→2），已按下节的定价审计修正；现在该快照
+  **每张卡的 price 都等于其单位价值之和**，可作回归基线。
+- 仍为 `null` 的 price：12 张辅助卡（无单位）、`清理裂隙` / `牛牛冲鸭`（`虚空裂隙` /
+  `牛头人兵营` 无实盘定价）。`null` 表示未知，不要当 0 用。
+
+### 单位定价与 price 审计（`scripts/audit_card_prices.py`）
+卡牌 `price` = 各单位价值之和，于是整份快照是一组超定线性方程。两张表都声称持有单位价值：
+
+- `constants/unit_prices.py` —— 从**游戏内显示的卡牌价值**反推，是运行时 `Slot.price()` 的依据。
+- 地图 `UnitData.xml` + `data/maps/card_overrides.json` —— `card_extractor.py` 用它累加出
+  提取快照的 `price`。
+
+**只有手抄快照能当裁判**：`v20260826_card.json` 的价格是照着游戏读下来的，独立于两张表；
+而 `v4.6.1.7_card.json` 的 `price` 本身就是用地图成本算出来的，拿它评分是循环论证。
+审计脚本因此穷举所有有争议单位的取值组合，取"能让最多手抄卡牌平账"的那组：
+
+```
+uv run python scripts/audit_card_prices.py            # 审计 v20260826（默认）
+uv run python scripts/audit_card_prices.py --fix      # 把不平账的 price 改成单位之和
+uv run python scripts/audit_card_prices.py --cards data/v4.6.1.7_card.json --no-arbitrate
+```
+
+据此定案的 5 项修正（已写入 `unit_prices.py`，注释里带证据卡牌）：`幽灵(皇家卫队)` 900→1000、
+`战列巡航舰(皇家卫队)` 1700→1500（这两项**必须成对改**，旧值靠两处误差在 `御驾亲征` 上
+互相抵消，却让 `cloudplayer` 多出 200）、`旋风狂热者` 150→100、`维京战机(精英)` 225→275、
+新增 `斯旺` 200。
+
+### ⚠ 地图 UnitData.xml 是补丁层，单价会缺一半（已用 overrides 补齐）
+`gf_获取商店卡牌总价值` → `gf_GetUnitTypeValue` 就是 `UnitTypeGetCost(Minerals) + (Vespene)`，
+所以地图**公式**没问题；问题在数据层：地图自带的 `UnitData.xml` 只是**补丁层**，
+运行时 `UnitTypeGetCost` 解析的是「基础游戏 + 依赖 mod + 地图补丁」的合并结果，而
+`star_tavern_cards.resolved_costs()` 只能看到地图补丁。**只补了一种资源的单位会丢掉另一种**
+（补齐两种资源的 `MengskBC2` 1000+500、`GhostRG` 1000 则完全正确）：
+
+| 单位 | 地图补丁 | 显示值 | 丢失 | 佐证卡（手抄价） |
+|---|---|---|---|---|
+| `不朽者(精英)` ImmortalShakuras | Vespene 250 | 500 | 250 Minerals | 一鼓作气 2000 |
+| `地堡` Bunker2 | Minerals 400 | 500 | 100 | 孤军奋战 1150 |
+| `异龙(精英)` MutaliskViper | Minerals 200 | 300 | 100 | 军事学院 1800 / 空中管制 1600 / 入景随风 2400 |
+| `浩劫` Monitor | Minerals 100 | 200 | 100 | 鲜血猎手 950 / 战时经济 1000 |
+| `维京战机(精英)` HelsAngel* | Minerals 175 | 275 | 100 | 斯台特曼 1275 |
+| `斯台特曼` Stetmann | Minerals 150 | 175 | 25 | 斯台特曼 1275 |
+| `掠夺者` Reaver | 不在地图 xml 里 | 500 | 走 unit_info.json 的 400 | 净化者军团 1400 / 菲尼克斯 2100 |
+
+这 7 项（8 个 unit id）已写进 `data/maps/card_overrides.json`，每条带 `_why` 注明补丁值与佐证卡。
+重跑 `extract_cards.py` 后，`v4.6.1.7_card.json` 与 `UNIT_PRICES` 之和不符的卡从 12 张降到 0。
+
+另有 2 项方程无法裁决，已按实盘确认取地图补丁值（因此**不需要** override，只改了 `UNIT_PRICES`）：
+`托什` 100→600、`歌利亚(精英)` 300→250。前者连带把手抄快照 `唯一` 的 price 3100 修正为 3600
+（= 600 + `泰凯斯` + `奥丁`），正是 v4.6.1.7 里改名后的 `坚守信念` 所印的值。
+
+**当前状态**：两张定价表**完全一致**（审计脚本报"有争议单位 0"），两份快照各自 100% 平账，
+同名卡的 `price` 全部相同，只剩 `望梅止渴`/`能量矩阵`/`风暴英雄` 是 OLD `null` 对 NEW `0.0`
+的约定差异（这三张所有单位价值都是 0）。
 
 ### 关键数据格式坑（.context 未提及，务必注意）
 `v260822_card.json` 的 `description` 列表**并非**"一元素一子句"：同一逻辑描述可能被切成多个片段，
@@ -218,3 +272,74 @@ random_pick=False)` 会用过滤后的卡牌构建卡池 / 引擎，并把最终
 - 不规则的写进 `cards/overrides.py`，key 用 `parsing.text.normalize` 后的文本；普通/金色数值不同就各注册一条。
 - 新单位名不在旧价格表时，加载器会自动把数据里的单位注册进词典；纯效果衍生单位可在
   `text._build_unit_lexicon` 的补充列表里添加。
+
+## 从 SC2Map 重新提取卡牌数据（新增）
+
+卡牌 JSON 不再需要手抄：`uv run python extract_cards.py` 直接从
+`data/maps/星际酒馆正式版-v4.6.1.7.SC2Map` 生成 `data/v4.6.1.7_card.json`（157 张，字段与
+`v20260826_card.json` 一致）+ `artifacts/cards/v4.6.1.7_card_diagnostics.json`（审计信息）。
+详细说明见 `docs/card-extraction.md`。
+
+根目录脚本分工：
+
+```
+paths.py              # 管线用到的所有路径常量（地图、解包目录、输出、覆盖文件）
+sc2map_unpacker.py    # MPQ 解包（mpyq，dev 依赖）
+galaxy_explore.py     # 十六进制标识符编解码 / 按中文名打印函数体 / --readable 全文解码
+galaxy_interp.py      # Galaxy 子集解释器（生成式语法 + 引擎原生函数），不支持的东西直接抛错
+card_extractor.py     # 按地图启动顺序跑注册流程，再读 gv_已设计的卡牌模板 输出 JSON
+extract_cards.py      # 解包 + 提取 的一键入口
+star_tavern_cards.py  # 旧的“正则匹配 Galaxy 源码”提取器，现仅复用其本地化/单价/拆行工具函数
+```
+
+**关键事实**：卡牌描述是运行时由 `gf_根据特效字符串生成描述文本(特效字符串, 三连, 不换行)` 渲染的，
+特效字符串是一条扁平分隔串。所以提取器**解释执行地图脚本**而不是猜文本：跑
+`InitGlobals` → `gf_初始化特殊词条` / `gf_初始化卡牌升级` → 各 `gt_*_Init`（登记卡池包）→
+逐包执行触发器（`gf_AddCardModule` 自己填模板表）→ `gf_初始化卡牌设计（补充）`。
+描述按 `<n/>` 拆行，与 `parsing/` 的输入格式一致（模拟器加载新文件：629 行中 618 行命中已有 handler；
+未命中的 11 行见"扩展效果覆盖率的方法"，多为数值改动 + `复制中心` / `战士的财宝` 两张新卡）。
+
+改这套东西时的坑：
+
+- 编辑器把非 ASCII 标识符写成 UTF-8 十六进制，**变量名（`gv_`/`lv_`/`lp_`）首字符会小写**，
+  `ge_`/`gf_`/`gt_`/`gs_` 不会；结构体字段名同样是十六进制（用 `CardExtractor.field()` 访问）。
+- Galaxy 的 `text` 变量默认是 `null` 而不是 `""`，`StringSub` 越界返回 `null`。地图大量用
+  `if ((文本 != null) == false) return null;` 表达“没话说”，把 null 当空串会渲染出
+  `反应堆生产陆战队员和`、`灵能：若且，则…` 这类残句。
+- `tags` 是派生约定（种族 + 子类 + 描述行关键词），不是地图字段；词条图标字母不可用作标签。
+- 单位中文名优先取地图本地化，缺失才用 `data/maps/unit_info.json`；单价缺失走
+  `data/maps/card_overrides.json`（24 条，含 7 条带 `name` 的命名修正，以及 8 条修补
+  "UnitData.xml 只补一种资源"的定价，见上节表格）。
+- **大厅属性会 gate 卡牌注册**。`Interpreter` 默认让 `GameAttributeGameValue` 返回 `""`，
+  于是 `gf_核心中立初始化` 里 `if (attr[…]4 == "0002")` 的两张卡（`虚空大军` / `黑暗预兆`）
+  根本不注册。`card_extractor.STANDARD_MODE_ATTRIBUTES` 把属性 4 钉成 `"0002"`（标准模式；
+  `"0001"` 是新手模式：只开核心包、无拓展）。全脚本扫描确认属性 4 是唯一 gate 住
+  `gf_AddCardModule` 的条件；属性 14 只在 `同卵双狗`（组队模式包）里 early-return，
+  而该包 `CardPackInit(valid=组队模式)` 本就不启用。改属性前先扫一遍，别把卡改没了。
+- `CardPackInit(valid=false)` 的包会被跳过并记进诊断 `skipped_packs`：`同卵双狗`（组队模式）、
+  `卷土重来`（硬关）、`PVE`（PvE 模式）。它们不属于本模拟器建模的 8 人酒馆。
+- **`比赛冠军`（特典卡）包的 `Identify` 是每局随机的**：触发器打乱 7 张卡、只启用 1 张，
+  给其余 6 张盖上 `ge_卡牌识别符_无法进入卡池`。所以读到这个识别符**不代表**该卡永不进池，
+  必须按包名排除（`pack_name != CHAMPION_PACK_NAME`）。
+- **模板索引在排序前后会变**：`gf_初始化卡牌设计（补充）` 先 `gf_卡牌模板选择排序()` 打乱常规区，
+  再 `gf_SpecialCardsInit()` 追加特殊卡/辅助卡。所以包触发器里记下的索引区间（如
+  `gv_比赛冠军模板索引开始/结束`）在读模板时已经失效；辅助卡区间（`gv_辅助卡模板索引开始`）
+  在排序之后才分配，可以放心比较。
+- `galaxy_explore.readable()` 对 `gv__模板IDxxx` 这类标识符只能半解码（`ID` 的 `D` 会被吞进
+  后面的十六进制串），grep 全文时用原始十六进制形式更可靠。
+
+### `不进卡池` 来源标签
+提取器给"永远不会被商店/发现抽到"的卡追加 `source` 标签 `不进卡池`
+（`card_extractor.SOURCE_NO_POOL`），按三条地图事实推导：
+
+1. `ge_卡牌识别符_无法进入卡池`（`不法之徒` / `母舰核心`，比赛冠军包除外，见上）；
+2. 星级 > 6 —— 高于最高酒馆等级，即 4 张"只用于沙盒模式测试"卡
+   （`测试沙包` / `大型兵团` / `能量矩阵` / `挂件仓库`）；
+3. 辅助卡且不在"发现辅助卡"窗口 `gv_辅助卡模板索引开始 .. + gv_诺娃可以抽取前几张辅助卡(=7)`
+   内 —— 只能由专属效果或英雄技能授予（`引导核弹` / `冷钱包` / `矿簇` / `战士的财宝` /
+   `核弹天劫`；例如 `战士的财宝` 来自狂热者英雄技能）。窗口内的 7 张正好等于
+   `simulator/hero.AUXILIARY_CARD_NAMES`。
+
+该标签**与其它来源标签并存**（如 `["辅助卡", "不进卡池"]`），只影响能否被抽到，不影响是否启用：
+`expansions.enabled_sources` 始终把它算作启用来源，`loader.build_game` 则把它并入
+`no_draw_uuids`。诊断里有 `cards_not_in_pool` 完整清单（当前 11 张）。

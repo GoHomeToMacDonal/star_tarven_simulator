@@ -1,13 +1,31 @@
 # 星际酒馆模拟器（Star Tavern Simulator）
 
 模拟《星际争霸》主题的“酒馆战棋”自走棋玩法：把卡牌的中文描述文本翻译成可执行的效果代码，
-并驱动一套回合制事件引擎。数据输入为 `data/v20260822_card.json`（154 张卡）。
+并驱动一套回合制事件引擎。数据输入为 `data/v20260826_card.json`（153 张卡），
+也可以从地图现场提取（见下）。
 
 > AI 助手请先读 `AGENTS.md` 与 `.context/*.md`。本文只给人类开发者一个运行入口。
 
 ## 环境
 
 - Python ≥ 3.12，使用 [`uv`](https://docs.astral.sh/uv/) 工具链。
+
+## 从地图提取卡牌数据
+
+```bash
+uv run python extract_cards.py   # 解包 SC2Map，解释执行地图脚本，输出 data/v4.6.1.7_card.json
+```
+
+管线会解包 `data/maps/星际酒馆正式版-v4.6.1.7.SC2Map`，用 Galaxy 解释器跑地图自己的卡牌注册与
+描述渲染代码，产出 157 张卡（字段与 `v20260826_card.json` 一致），并顺带和旧快照做逐字段对比。
+详见 [`docs/card-extraction.md`](docs/card-extraction.md)。
+
+卡牌 `price` 与单位价值的一致性校验：
+
+```bash
+uv run python scripts/audit_card_prices.py          # 审计手抄快照，--fix 可回写
+uv run python scripts/audit_card_prices.py --cards data/v4.6.1.7_card.json --no-arbitrate
+```
 
 ## 运行
 
@@ -71,3 +89,21 @@ print(game.enabled_expansions)                       # 本局实际启用的拓�
 
 过滤 / 校验 / 随机挑选的实现见 `src/star_tarven_simulator/expansions.py`，
 更多设计说明见 `AGENTS.md` 与 `.context/card-description-format.md` §6。
+
+## 终局配方库与依赖图谱
+
+可从全量卡牌重建类型化机制图，并生成全局最多 100 条七槽终局配方：
+
+```bash
+# handler/完整语义覆盖率与全部事件矩阵
+uv run python -m star_tarven_simulator.recipes.report --events
+
+# JSON 配方库（--max 的硬上限为 100）
+uv run python -m star_tarven_simulator.recipes.catalog --max 100 --output /tmp/recipes.json
+
+# 基于图谱的可解释结构策略
+uv run python -m star_tarven_simulator.recipes.strategy --max 8
+```
+
+当前模板覆盖神族能量集结、跨卡事件反馈、虫族集群、单位供需链、灵能精英化流水线和双死亡舰队刷牌黑暗值循环。策略说明终局站位、核心循环、运营优先级和风险，不承诺随机商店中的固定购买路径。详见
+[`docs/terminal-recipe-library.md`](docs/terminal-recipe-library.md)。

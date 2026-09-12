@@ -199,6 +199,38 @@ UNIT_PRICES["行星要塞"] = 700.0
 UNIT_PRICES["过载水晶塔"] = 200.0
 
 
+# Corrections settled by ``scripts/audit_card_prices.py``: it brute-forces every
+# combination of the disputed values and keeps the one that balances the most
+# hand-transcribed card prices in data/v20260826_card.json.  Re-run it after
+# editing this block.
+#
+# 幽灵(皇家卫队) and 战列巡航舰(皇家卫队) only balance as a pair.  The old 900/1700
+# happened to fit 御驾亲征 (1700 + 2*900 + 8*40 = 3820) because the two errors
+# cancelled there, but it left cloudplayer 200 over.  1000/1500 fits both
+# (御驾亲征 1500 + 2*1000 + 320 = 3820, cloudplayer 1500+200+125+250 = 2075) and
+# matches the map's own unit costs.
+UNIT_PRICES["幽灵(皇家卫队)"] = 1000.0
+UNIT_PRICES["战列巡航舰(皇家卫队)"] = 1500.0
+# 先锋概念 = 5*100 + 3*150 + 0 = 950, the value both snapshots print; the map's
+# ZealotAiur override agrees.
+UNIT_PRICES["旋风狂热者"] = 100.0
+# 斯台特曼 = 175 + 4*275 + 0 = 1275, as displayed.  275 also restores the elite
+# premium every other elite variant here shows (劫掠者 125/225, 歌利亚 200/250).
+UNIT_PRICES["维京战机(精英)"] = 275.0
+# Confirmed against the live game after the audit could not settle them from card
+# equations alone; both match the map's UnitData patch, so no card_overrides entry
+# is needed.  托什 forces data/v20260826_card.json's 唯一 to 3600 (600 + 泰凯斯 +
+# 奥丁), which is exactly what v4.6.1.7 prints for the renamed 坚守信念.
+# 歌利亚(精英) has no hand-transcribed witness at all - 复制中心 is new in v4.6.1.7.
+UNIT_PRICES["托什"] = 600.0
+UNIT_PRICES["歌利亚(精英)"] = 250.0
+# Only 斯旺舰队 contains 斯旺, so the card cannot separate the two: 斯旺=200 makes
+# it 3900 (the map's figure), 斯旺=525 would make the transcribed 4225 balance.
+# 200 is taken because every other named hero unit here sits in the 100-700 band
+# and the map states it outright; 斯旺舰队's price is treated as the typo.
+UNIT_PRICES["斯旺"] = 200.0
+
+
 # Fixed-hero contract names for Mengsk's royal conversions.
 UNIT_PRICES["皇家战列巡航舰"] = UNIT_PRICES["战列巡航舰(皇家卫队)"]
 UNIT_PRICES["皇家雷神"] = UNIT_PRICES["雷神(皇家卫队)"]

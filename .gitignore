@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Unpacked map data and extraction audit trails (regenerate with extract_cards.py)
+artifacts/
