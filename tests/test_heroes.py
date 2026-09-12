@@ -2023,7 +2023,7 @@ def test_thor_accepts_core_cards_with_additional_expansion_source(cards):
     choice = tarven.force_action[0]
     assert choice.kind == "thor-description"
     assert any(
-        option.name == "快速生产"
+        option.name == "交叉火力"
         and "核心人族" in option.source
         and "重装上阵" in option.source
         for option in choice.options
